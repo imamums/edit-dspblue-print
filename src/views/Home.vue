@@ -1,7 +1,7 @@
 <template>
   <div class="main">
     <div class="wrap">
-      <ScrollCard :otherLinks="navExtraLinks">
+      <ScrollCard ref="scrollCardRef" :otherLinks="navExtraLinks">
         <template #navRight>
           <div class="navRight">
             <VersionDropdown />
@@ -68,7 +68,7 @@
                   <p>{{item.name}}</p>
                 </template>
                 <div class="item">
-                  <img class="icon" :src="getIcon(item)" />
+                  <ItemIcon class="icon" :item-id="item.itemId" :item-name="item.name" :size="30" />
                   <div class="count">{{item.count}}</div>
                 </div>
               </el-tooltip>
@@ -562,7 +562,7 @@
                   <p>{{item.name}}</p>
                 </template>
                 <div class="item">
-                  <img class="icon" :src="getIcon(item)" />
+                  <ItemIcon class="icon" :item-id="item.itemId" :item-name="item.name" :size="30" />
                   <div class="count">{{item.count}}</div>
                 </div>
               </el-tooltip>
@@ -599,20 +599,29 @@
 import ScrollCard from "@/components/ScrollCard.vue";
 import ScrollCardItem from "@/components/ScrollCardItem.vue";
 import VersionDropdown from "@/components/VersionDropdown.vue";
+import ItemIcon from "@/components/ItemIcon.vue";
 import * as PARSER from "@/utils/parser";
 import * as itemsUtil from "@/utils/itemsUtil";
 import { saveAs } from "file-saver";
+
+const GENERATED_BLUEPRINT_CACHE_KEY = "dsp.generatedBlueprint";
+
 export default {
   name: "Home",
   components: {
     ScrollCard,
     ScrollCardItem,
     VersionDropdown,
+    ItemIcon,
+  },
+  mounted() {
+    this.tryImportGeneratedBlueprintFromCache();
   },
   data() {
     return {
       navExtraLinks: [
         { name: "数据字典", url: "https://gitee.com/cying314/edit-dspblue-print#蓝图数据字典" },
+        { name: "生成蓝图", url: "#/generator" },
         // {name:'查看更新(当前版本：' + process.env.VUE_APP_VERSION + ')', url: 'https://pan.baidu.com/s/1kE3t7FUhvCSBbPczvVupvw?pwd=6666'},
       ],
       formInline: {
@@ -895,6 +904,22 @@ export default {
     };
   },
   methods: {
+    tryImportGeneratedBlueprintFromCache() {
+      const text = String(localStorage.getItem(GENERATED_BLUEPRINT_CACHE_KEY) || "").trim();
+      if (!text.startsWith("BLUEPRINT:")) {
+        return;
+      }
+      localStorage.removeItem(GENERATED_BLUEPRINT_CACHE_KEY);
+      this.$set(this.formInline, "dataType", "blueprint");
+      this.$set(this.formInline, "inputData", text);
+      if (this.formInline.paramType == "无中生有") {
+        this.$set(this.formInline, "paramType", "默认转换");
+      }
+      this.$nextTick(() => {
+        this.render();
+        this.$refs.scrollCardRef?.jumpByName("导入蓝图");
+      });
+    },
     formatNum_sevenToNegative(num) {
       // 前缀7的数字，7转为负号
       if (isNaN(num)) return 0;
@@ -995,15 +1020,6 @@ export default {
         }
       } else {
         this.warning(`浏览器不支持剪贴板，粘贴失败！`);
-      }
-    },
-    getIcon(item) {
-      let icon = item?.icon;
-      if (!icon) return null;
-      try {
-        return require("@/assets/images/" + icon + ".png");
-      } catch (e) {
-        return null;
       }
     },
     getItemList(blueprintData) {

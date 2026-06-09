@@ -26,7 +26,7 @@ module.exports = {
             .plugin('html')
             .tap(args => {
                 args[0].title = `DSP蓝图变换工具 ${process.env.VUE_APP_VERSION}`;
-                args[0].inlineSource = '(\.css|\.js$)'
+                args[0].inlineSource = /(\.css|\.js$)/
                 return args
             })
         config.optimization.minimizer('terser').tap((args) => {

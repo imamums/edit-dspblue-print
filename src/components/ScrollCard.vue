@@ -55,7 +55,13 @@ export default {
   },
   methods: {
     openLink(url) {
-      window.open(url);
+      const link = String(url || "").trim();
+      if (!link) return;
+      if (link.startsWith("#/")) {
+        window.location.hash = link;
+        return;
+      }
+      window.open(link);
     },
     // 从默认插槽中获取插入的ScrollCardItem组件vue实例
     resetCardItemRef() {

@@ -1,13 +1,40 @@
 <template>
   <div id="app">
-    <Home></Home>
+    <component :is="activeView"></component>
   </div>
 </template>
 
 <script>
-import Home from '@/views/Home'
+import Home from "@/views/Home";
+
 export default {
-  components:{Home},
+  components: {
+    Home,
+    BlueprintGenerator: () => import("@/views/BlueprintGenerator.vue"),
+  },
+  data() {
+    return {
+      routeName: "home",
+    };
+  },
+  computed: {
+    activeView() {
+      return this.routeName === "generator" ? "BlueprintGenerator" : "Home";
+    },
+  },
+  created() {
+    this.syncRoute();
+    window.addEventListener("hashchange", this.syncRoute);
+  },
+  beforeDestroy() {
+    window.removeEventListener("hashchange", this.syncRoute);
+  },
+  methods: {
+    syncRoute() {
+      const hash = (window.location.hash || "").trim();
+      this.routeName = hash.startsWith("#/generator") ? "generator" : "home";
+    },
+  },
   mounted() {
     (function () {
       function __canvasWM({
@@ -56,7 +83,7 @@ export default {
       }
       window.__canvasWM = __canvasWM;
     })();
-    window.__canvasWM()
+    window.__canvasWM();
   },
 };
 </script>
