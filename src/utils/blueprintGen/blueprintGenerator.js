@@ -1104,6 +1104,13 @@ function createMachineSegments(rowInfo, config, options = {}) {
     segments.push(segment);
   }
 
+  if (includeTransport && toInt(config?.modeType, 2) === 1 && segments.length > 1) {
+    let segmentConnectors = connectNeighborSegments(segments, config);
+    if (segmentConnectors.length > 0) {
+      segments[segments.length - 1].buildings.push(...segmentConnectors);
+    }
+  }
+
   return {
     machineCount,
     machinesPerLine,
@@ -1725,6 +1732,65 @@ function createOrthogonalBeltPath(startX, startY, endX, endY) {
   ]);
 }
 
+function buildDetourPathForSplitter(sourcePos, targetPos) {
+  let sx = toNumber(sourcePos?.x, 0);
+  let sy = toNumber(sourcePos?.y, 0);
+  let ex = toNumber(targetPos?.x, 0);
+  let ey = toNumber(targetPos?.y, 0);
+  let dx = ex - sx;
+  let dy = ey - sy;
+
+  if (Math.abs(dx) < 0.000001 && Math.abs(dy) < 0.000001) {
+    return [{ x: sx, y: sy, z: 0 }];
+  }
+
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    let detourY = sy + (dy >= 0 ? 1 : -1);
+    return createPathByPoints([
+      { x: sx, y: sy, z: 0 },
+      { x: sx, y: detourY, z: 0 },
+      { x: ex, y: detourY, z: 0 },
+      { x: ex, y: ey, z: 0 },
+    ]);
+  }
+
+  let detourX = sx + (dx >= 0 ? 1 : -1);
+  return createPathByPoints([
+    { x: sx, y: sy, z: 0 },
+    { x: detourX, y: sy, z: 0 },
+    { x: detourX, y: ey, z: 0 },
+    { x: ex, y: ey, z: 0 },
+  ]);
+}
+
+function createDirectBeltBridge(source, target, beltLevel) {
+  if (!source || !target) {
+    return [];
+  }
+
+  let sourcePos = BlueprintUtils.getBuildPos(source);
+  let targetPos = BlueprintUtils.getBuildPos(target);
+  let path = createOrthogonalBeltPath(sourcePos.x, sourcePos.y, targetPos.x, targetPos.y);
+  if (!Array.isArray(path) || path.length < 2) {
+    return [];
+  }
+
+  let belts = [];
+  for (let i = 1; i < path.length - 1; i++) {
+    let p = path[i];
+    belts.push(createBeltBuilding(beltLevel, toNumber(p.x, 0), toNumber(p.y, 0), 0));
+  }
+
+  let cursor = source;
+  for (let i = 0; i < belts.length; i++) {
+    linkBelt(cursor, belts[i]);
+    cursor = belts[i];
+  }
+  linkBelt(cursor, target);
+
+  return belts;
+}
+
 function createBeltSplitterBridge(source, target, beltLevel, filterId = 0) {
   if (!source || !target) {
     return [];
@@ -1733,6 +1799,9 @@ function createBeltSplitterBridge(source, target, beltLevel, filterId = 0) {
   let sourcePos = BlueprintUtils.getBuildPos(source);
   let targetPos = BlueprintUtils.getBuildPos(target);
   let path = createOrthogonalBeltPath(sourcePos.x, sourcePos.y, targetPos.x, targetPos.y);
+  if (!Array.isArray(path) || path.length < 3) {
+    path = buildDetourPathForSplitter(sourcePos, targetPos);
+  }
   if (!Array.isArray(path) || path.length < 3) {
     return [];
   }
@@ -1794,6 +1863,59 @@ function createBeltBridgeConnector(source, target, config, inserterLevel, filter
   }
 
   return [createBeltInserter(source, target, inserterLevel, filterId)];
+}
+
+function createSegmentBeltConnector(source, target, config) {
+  if (!source || !target) {
+    return [];
+  }
+
+  if (toInt(config?.useFourWaySplitter, 0) > 0) {
+    let bridgeBuildings = createBeltSplitterBridge(source, target, toInt(config?.beltLv, 1));
+    if (bridgeBuildings.length > 0) {
+      return bridgeBuildings;
+    }
+  }
+
+  return createDirectBeltBridge(source, target, toInt(config?.beltLv, 1));
+}
+
+function connectNeighborSegments(segments, config) {
+  if (!Array.isArray(segments) || segments.length <= 1) {
+    return [];
+  }
+
+  let connectors = [];
+  for (let i = 0; i < segments.length - 1; i++) {
+    let current = segments[i];
+    let next = segments[i + 1];
+
+    let currentInputLines = Array.isArray(current?.inputLines) ? current.inputLines : [];
+    let nextInputLines = Array.isArray(next?.inputLines) ? next.inputLines : [];
+    let inputLineCount = Math.min(currentInputLines.length, nextInputLines.length);
+
+    for (let lineIndex = 0; lineIndex < inputLineCount; lineIndex++) {
+      let currentInputBelts = currentInputLines[lineIndex]?.belts || [];
+      let nextInputBelts = nextInputLines[lineIndex]?.belts || [];
+      let source = currentInputBelts[currentInputBelts.length - 1];
+      let target = nextInputBelts[0];
+      connectors.push(...createSegmentBeltConnector(source, target, config));
+    }
+
+    let currentOutputBelts = current?.outputLine?.belts || [];
+    let nextOutputBelts = next?.outputLine?.belts || [];
+    let outputSource = currentOutputBelts[currentOutputBelts.length - 1];
+    let outputTarget = nextOutputBelts[0];
+    connectors.push(...createSegmentBeltConnector(outputSource, outputTarget, config));
+
+    let currentBackflowBelts = current?.backflowLine?.belts || [];
+    let nextBackflowBelts = next?.backflowLine?.belts || [];
+    let backflowSource = currentBackflowBelts[currentBackflowBelts.length - 1];
+    let backflowTarget = nextBackflowBelts[0];
+    connectors.push(...createSegmentBeltConnector(backflowSource, backflowTarget, config));
+  }
+
+  return connectors;
 }
 
 function isNeedItem(needsById, itemId) {
@@ -2504,33 +2626,86 @@ function createPowerTowerGrid(existingBuildings) {
   let width = Math.max(1, maxX - minX);
   let height = Math.max(1, maxY - minY);
 
-  let totalTowers = Math.max(1, Math.ceil(existingBuildings.length / 15));
+  let occupied = new Set();
+  for (let i = 0; i < existingBuildings.length; i++) {
+    let b = existingBuildings[i];
+    let pos = BlueprintUtils.getBuildPos(b);
+    let id = toInt(b?.itemId, 0);
+
+    let bSize = 1;
+    if ([2303, 2304, 2305, 2302, 2315, 2308, 2309, 2310, 2314, 2311].includes(id)) {
+      bSize = 3;
+    } else if (id === 2313) {
+      bSize = 6;
+    } else if (id === 2306) {
+      bSize = 4;
+    } else if (id === 2103 || id === 2104) {
+      bSize = 7;
+    } else if (id === 2101) {
+      bSize = 2;
+    } else if (id === 2102) {
+      bSize = 3;
+    } else if (id === 2020) {
+      bSize = 3;
+    } else if (id === 2107) {
+      bSize = 1;
+    }
+
+    let radius = (bSize - 1) / 2;
+    for (let dx = -Math.floor(radius); dx <= Math.ceil(radius); dx++) {
+      for (let dy = -Math.floor(radius); dy <= Math.ceil(radius); dy++) {
+        occupied.add(`${Math.round(toNumber(pos?.x, 0) + dx)}_${Math.round(toNumber(pos?.y, 0) + dy)}`);
+      }
+    }
+  }
+
+  let powerConsumers = existingBuildings.filter((b) => {
+    let id = toInt(b?.itemId, 0);
+    return id !== 2001 && id !== 2002 && id !== 2003;
+  }).length;
+  let totalTowers = Math.max(1, Math.ceil(powerConsumers / 20), Math.ceil(existingBuildings.length / 40));
+
   let topY = minY + 2;
   let bottomY = maxY + 1;
   let middleY = Math.floor((topY + bottomY) / 2) + 1;
   let plannedPoints = [
-    { x: minX + 8, y: topY },
-    { x: minX + 12, y: topY },
-    { x: minX + 2, y: bottomY },
-    { x: minX + 6, y: bottomY },
-    { x: minX + 10, y: middleY },
+    { x: minX + Math.floor(width * 0.2), y: topY },
+    { x: minX + Math.floor(width * 0.8), y: topY },
+    { x: minX + Math.floor(width * 0.2), y: bottomY },
+    { x: minX + Math.floor(width * 0.8), y: bottomY },
+    { x: Math.floor((minX + maxX) / 2), y: middleY },
   ];
 
   let towers = [];
   let used = {};
-  for (let i = 0; i < plannedPoints.length && towers.length < totalTowers; i++) {
-    let point = plannedPoints[i];
-    let clampedX = Math.max(minX, Math.min(maxX, toInt(point.x, minX)));
-    let clampedY = Math.max(minY, Math.min(maxY + 1, toInt(point.y, minY)));
-    let key = `${clampedX}_${clampedY}`;
-    if (used[key]) {
-      continue;
-    }
 
-    let tower = createPowerTowerBuilding();
-    BlueprintUtils.setBuildPos(tower, clampedX, clampedY, 0);
-    towers.push(tower);
-    used[key] = 1;
+  function tryPlaceTower(x, y) {
+    for (let r = 0; r <= 4; r++) {
+      for (let dx = -r; dx <= r; dx++) {
+        for (let dy = -r; dy <= r; dy++) {
+          if (r > 0 && Math.abs(dx) !== r && Math.abs(dy) !== r) {
+            continue;
+          }
+
+          let cx = Math.round(toNumber(x, 0) + dx);
+          let cy = Math.round(toNumber(y, 0) + dy);
+          let key = `${cx}_${cy}`;
+          if (!occupied.has(key) && !used[key]) {
+            let tower = createPowerTowerBuilding();
+            BlueprintUtils.setBuildPos(tower, cx, cy, 0);
+            towers.push(tower);
+            used[key] = 1;
+            occupied.add(key);
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  for (let i = 0; i < plannedPoints.length && towers.length < totalTowers; i++) {
+    tryPlaceTower(plannedPoints[i].x, plannedPoints[i].y);
   }
 
   if (towers.length >= totalTowers) {
@@ -2543,14 +2718,7 @@ function createPowerTowerGrid(existingBuildings) {
     for (let col = 0; col < cols && towers.length < totalTowers; col++) {
       let x = minX + Math.floor(width * (col + 0.5) / cols);
       let y = minY + Math.floor(height * (row + 0.5) / rows);
-      let key = `${x}_${y}`;
-      if (used[key]) {
-        continue;
-      }
-      let tower = createPowerTowerBuilding();
-      BlueprintUtils.setBuildPos(tower, x, y, 0);
-      towers.push(tower);
-      used[key] = 1;
+      tryPlaceTower(x, y);
     }
   }
 

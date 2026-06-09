@@ -1,5 +1,24 @@
 # HISTORY_FRONTEND
 
+### [2026-06-09 21:05] GitHub Copilot / GPT-5.3-Codex
+
+- **修改范围**：修复蓝图生成中的分拣器角度、四向分流器生效及无方案跨段传送带连通
+- **修改的文件**：
+  - `src/utils/blueprintGen/blueprintGenerator.js`
+  - `HISTORY_FRONTEND.md`
+- **变更意图**：解决用户反馈的三类生成结果问题，确保蓝图连接关系与开关配置一致
+- **核心变更内容**：
+  - 步骤1：新增 `calcInserterYaw`，将非机器目标的自动分拣器朝向改为按主轴对齐（0/90/180/270），降低带间桥接分拣器角度偏差
+  - 步骤2：为四向分流器桥接新增短路径绕行策略（`buildDetourPathForSplitter`），避免相邻点位因路径过短直接回退为分拣器
+  - 步骤3：新增无方案跨段连线逻辑（`connectNeighborSegments`），在多段产线时补齐输入/输出/回流线段之间的桥接
+  - 步骤4：新增纯传送带桥接逻辑（`createDirectBeltBridge`），在未开启四向分流器时优先使用传送带连续连接段间主线
+- **影响范围**：
+  - 影响 `modeType = 1`（无方案）多段机器排布下的传送带连通性
+  - 影响开启 `useFourWaySplitter` 时的带间桥接建筑表现
+  - 影响自动计算的带间分拣器朝向
+- **注意事项**：
+  - 本次无后端接口、数据库结构变更
+
 ### [2026-06-09 20:05] GitHub Copilot / GPT-5.3-Codex
 
 - **修改范围**：修复顶部导航点击跳转后高亮状态与路由不一致
