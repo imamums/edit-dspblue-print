@@ -63,6 +63,8 @@ function BlueprintConfig() {
   this.colliderMaxCount = 15;
   this.mergeType = 2;
   this.blockWidthLimit = 50;
+  this.enablePowerTower = 1;
+  this.useFourWaySplitter = 0;
 }
 
 BlueprintConfig.prototype.getMachineMaxCount = function (factoryType) {

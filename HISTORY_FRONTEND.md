@@ -1,5 +1,22 @@
 # HISTORY_FRONTEND
 
+### [2026-06-09 17:10] GitHub Copilot / Gemini 3 Flash (Preview)
+
+- **修改范围**：蓝图配置下拉框图标增强
+- **修改的文件**：
+  - `src/components/BlueprintGeneratorPanel.vue`
+- **变更意图**：在蓝图生成的配置项中引入物品/模式图标，提升视觉识别度与交互体验
+- **核心变更内容**：
+  - 步骤1：为“传送带等级”、“分拣器等级”及“物流模式”的 `el-select` 选项添加 `ItemIcon` 精灵图图标
+  - 步骤2：在这些下拉框的 `prefix` 插槽中集成选中项图标，实现闭合状态下的图标预览
+  - 步骤3：同步为“需求物品”下拉框添加 `prefix` 图标预览，保持界面一致性
+  - 步骤4：新增 `getBeltName`, `getSorterName`, `getModeName` 辅助方法用于等级/模式到物品名称的映射
+- **影响范围**：
+  - 涉及蓝图生成设置面板的所有等级与模式选择器
+  - 优化了移动端或高分辨率下的配置识别效率
+- **注意事项**：
+  - 图标大小统一设为 14px (prefix) 和 16px (option)，并配合 `bp-item-select-popper` 样式确保对齐
+
 ### [2026-06-09 16:55] GitHub Copilot / Gemini 3 Flash (Preview)
 
 - **修改范围**：新增“视为原矿”功能，支持截断产线深度分解

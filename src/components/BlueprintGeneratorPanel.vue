@@ -18,6 +18,15 @@
               class="need-item"
               popper-class="bp-item-select-popper"
             >
+              <template slot="prefix">
+                <ItemIcon 
+                  v-if="need.itemName" 
+                  :item-name="need.itemName" 
+                  :game-icon-name="getGameIconName(need.itemName)" 
+                  :size="14"
+                  style="margin-top: 7px;"
+                />
+              </template>
               <el-option
                 v-for="itemName in itemOptions"
                 :key="itemName"
@@ -85,29 +94,88 @@
         <div class="config-grid">
           <div class="config-item">
             <span class="label">传送带等级</span>
-            <el-select v-model="config.beltLv" size="small">
-              <el-option :value="1" label="1级"></el-option>
-              <el-option :value="2" label="2级"></el-option>
-              <el-option :value="3" label="3级"></el-option>
+            <el-select v-model="config.beltLv" size="small" popper-class="bp-item-select-popper">
+              <template slot="prefix">
+                <ItemIcon 
+                  v-if="config.beltLv" 
+                  :item-name="getBeltName(config.beltLv)" 
+                  :game-icon-name="getGameIconName(getBeltName(config.beltLv))" 
+                  :size="14"
+                  style="margin-top: 7px;"
+                />
+              </template>
+              <el-option
+                v-for="lv in [1, 2, 3]"
+                :key="lv"
+                :value="lv"
+                :label="lv + '级'"
+              >
+                <div class="item-option-row">
+                  <ItemIcon
+                    :item-name="getBeltName(lv)"
+                    :game-icon-name="getGameIconName(getBeltName(lv))"
+                  />
+                  <span>{{ lv }}级</span>
+                </div>
+              </el-option>
             </el-select>
           </div>
 
           <div class="config-item">
             <span class="label">分拣器等级</span>
-            <el-select v-model="config.inserterLv" size="small">
-              <el-option :value="1" label="1级"></el-option>
-              <el-option :value="2" label="2级"></el-option>
-              <el-option :value="3" label="3级"></el-option>
-              <el-option :value="4" label="4级"></el-option>
+            <el-select v-model="config.inserterLv" size="small" popper-class="bp-item-select-popper">
+              <template slot="prefix">
+                <ItemIcon 
+                  v-if="config.inserterLv" 
+                  :item-name="getSorterName(config.inserterLv)" 
+                  :game-icon-name="getGameIconName(getSorterName(config.inserterLv))" 
+                  :size="14"
+                  style="margin-top: 7px;"
+                />
+              </template>
+              <el-option
+                v-for="lv in [1, 2, 3, 4]"
+                :key="lv"
+                :value="lv"
+                :label="lv + '级'"
+              >
+                <div class="item-option-row">
+                  <ItemIcon
+                    :item-name="getSorterName(lv)"
+                    :game-icon-name="getGameIconName(getSorterName(lv))"
+                  />
+                  <span>{{ lv }}级</span>
+                </div>
+              </el-option>
             </el-select>
           </div>
 
           <div class="config-item">
             <span class="label">物流模式</span>
-            <el-select v-model="config.modeType" size="small">
+            <el-select v-model="config.modeType" size="small" popper-class="bp-item-select-popper">
+              <template slot="prefix" v-if="config.modeType !== 1">
+                <ItemIcon 
+                  :item-name="getModeName(config.modeType)" 
+                  :game-icon-name="getGameIconName(getModeName(config.modeType))" 
+                  :size="14"
+                  style="margin-top: 7px;"
+                />
+              </template>
               <el-option :value="1" label="无方案"></el-option>
-              <el-option :value="2" label="物流配送器"></el-option>
-              <el-option :value="3" label="行星内物流运输站"></el-option>
+              <el-option
+                v-for="type in [2, 3]"
+                :key="type"
+                :value="type"
+                :label="getModeName(type)"
+              >
+                <div class="item-option-row">
+                  <ItemIcon
+                    :item-name="getModeName(type)"
+                    :game-icon-name="getGameIconName(getModeName(type))"
+                  />
+                  <span>{{ getModeName(type) }}</span>
+                </div>
+              </el-option>
             </el-select>
           </div>
 
@@ -142,6 +210,11 @@
           <div class="config-item" v-if="config.modeType === 2">
             <span class="label">主干汇流(模式2)</span>
             <el-switch v-model="config.useMode2MainBus"></el-switch>
+          </div>
+
+          <div class="config-item">
+            <span class="label">生成电线杆</span>
+            <el-switch v-model="config.enablePowerTower"></el-switch>
           </div>
         </div>
       </el-form-item>
@@ -381,6 +454,7 @@ export default {
         refineryMaxCount: 15,
         chemicalMaxCount: 15,
         colliderMaxCount: 15,
+        enablePowerTower: true,
       },
       blueprintModules: null,
       calcModules: null,
@@ -457,6 +531,30 @@ export default {
     },
     getGameIconName(itemName) {
       return this.runtime?.gameData?.item_icon_name?.[itemName] || "";
+    },
+    getBeltName(lv) {
+      const map = {
+        1: "传送带",
+        2: "高速传送带",
+        3: "极速传送带",
+      };
+      return map[lv] || "";
+    },
+    getSorterName(lv) {
+      const map = {
+        1: "分拣器",
+        2: "高速分拣器",
+        3: "极速分拣器",
+        4: "集装分拣器",
+      };
+      return map[lv] || "";
+    },
+    getModeName(type) {
+      const map = {
+        2: "物流配送器",
+        3: "行星内物流运输站",
+      };
+      return map[type] || "";
     },
     getGameIconNameById(itemId) {
       const name = this.runtime?.gameData?.id_name_dict?.[itemId];
@@ -584,6 +682,7 @@ export default {
       cfg.chemicalMaxCount = toInt(this.config.chemicalMaxCount, 15);
       cfg.colliderMaxCount = toInt(this.config.colliderMaxCount, 15);
       cfg.useMode2MainBus = this.config.useMode2MainBus ? 1 : 0;
+      cfg.enablePowerTower = this.config.enablePowerTower ? 1 : 0;
       return cfg;
     },
     calcFactoryCount(outputPerTime, itemName, calculator, schemeData, gameData, fixedNum, timeScale) {

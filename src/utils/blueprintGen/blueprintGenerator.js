@@ -95,6 +95,7 @@ const BUILDING_MODEL_INDEX_BY_ITEM_ID = {
   2001: 35,
   2002: 36,
   2003: 37,
+  2020: 38,
   2011: 41,
   2012: 42,
   2013: 43,
@@ -369,6 +370,24 @@ function createStorageBoxBuilding() {
     storageType: 0,
     filters: new Array(30).fill(0),
   };
+  return building;
+}
+
+function createSplitterBuilding() {
+  let building = BlueprintUtils.CreateEmptyBuilding();
+  building.itemId = 2020;
+  building.modelIndex = getModelIndexByItemId(2020);
+  building.areaIndex = 0;
+  building.recipeId = 0;
+  building.filterId = 0;
+  building.outputObjIdx = -1;
+  building.inputObjIdx = -1;
+  building.outputToSlot = 1;
+  building.inputFromSlot = 0;
+  building.outputFromSlot = 0;
+  building.inputToSlot = 1;
+  building.yaw = [0, 0];
+  building.parameters = null;
   return building;
 }
 
@@ -1681,6 +1700,77 @@ function createBeltInserter(source, target, inserterLevel, filterId = 0) {
   return inserter;
 }
 
+function createBeltSplitterBridge(source, target, beltLevel, filterId = 0) {
+  if (!source || !target) {
+    return [];
+  }
+
+  let sourcePos = BlueprintUtils.getBuildPos(source);
+  let targetPos = BlueprintUtils.getBuildPos(target);
+  let path = createOrthogonalBeltPath(sourcePos.x, sourcePos.y, targetPos.x, targetPos.y);
+  if (!Array.isArray(path) || path.length < 3) {
+    return [];
+  }
+
+  let splitterIdx = Math.max(1, Math.min(path.length - 2, Math.floor(path.length / 2)));
+  let splitterPoint = path[splitterIdx];
+
+  let leadBelts = [];
+  for (let i = 1; i < splitterIdx; i++) {
+    let p = path[i];
+    leadBelts.push(createBeltBuilding(beltLevel, toNumber(p.x, 0), toNumber(p.y, 0), 0));
+  }
+
+  let tailBelts = [];
+  for (let i = splitterIdx + 1; i < path.length - 1; i++) {
+    let p = path[i];
+    tailBelts.push(createBeltBuilding(beltLevel, toNumber(p.x, 0), toNumber(p.y, 0), 0));
+  }
+
+  let splitter = createSplitterBuilding();
+  BlueprintUtils.setBuildPos(splitter, toNumber(splitterPoint.x, 0), toNumber(splitterPoint.y, 0), 0);
+  splitter.yaw = [calcYaw(sourcePos.x, sourcePos.y, targetPos.x, targetPos.y), calcYaw(sourcePos.x, sourcePos.y, targetPos.x, targetPos.y)];
+  if (toInt(filterId, 0) > 0) {
+    splitter.filterId = toInt(filterId, 0);
+  }
+
+  let upstream = source;
+  for (let i = 0; i < leadBelts.length; i++) {
+    linkBelt(upstream, leadBelts[i]);
+    upstream = leadBelts[i];
+  }
+
+  linkBelt(upstream, splitter);
+  splitter.__inputSourceRef = upstream;
+
+  let downstream = tailBelts.length > 0 ? tailBelts[0] : target;
+  splitter.outputToSlot = 1;
+  splitter.__outputTargetRef = downstream;
+
+  if (tailBelts.length > 0) {
+    for (let i = 0; i < tailBelts.length - 1; i++) {
+      linkBelt(tailBelts[i], tailBelts[i + 1]);
+    }
+    linkBelt(tailBelts[tailBelts.length - 1], target);
+  }
+
+  let box = createStorageBoxBuilding();
+  BlueprintUtils.setBuildPos(box, toNumber(splitterPoint.x, 0), toNumber(splitterPoint.y, 0), 1.2);
+
+  return leadBelts.concat([splitter], tailBelts, [box]);
+}
+
+function createBeltBridgeConnector(source, target, config, inserterLevel, filterId = 0) {
+  if (toInt(config?.useFourWaySplitter, 0) > 0) {
+    let bridgeBuildings = createBeltSplitterBridge(source, target, toInt(config?.beltLv, 1), filterId);
+    if (bridgeBuildings.length > 0) {
+      return bridgeBuildings;
+    }
+  }
+
+  return [createBeltInserter(source, target, inserterLevel, filterId)];
+}
+
 function isNeedItem(needsById, itemId) {
   let id = toInt(itemId, 0);
   return id > 0 && toNumber(needsById?.[id], 0) > 0;
@@ -1742,7 +1832,7 @@ function calcMode2LimiterInserterPlan(needPow, maxInserterLv) {
   return result;
 }
 
-function createMode2LimiterBlock(needPow, maxInserterLv, beltLevel, filterId = 0) {
+function createMode2LimiterBlock(needPow, maxInserterLv, beltLevel, filterId = 0, config = {}) {
   let plan = calcMode2LimiterInserterPlan(needPow, maxInserterLv);
 
   let belts1 = [];
@@ -1808,13 +1898,15 @@ function createMode2LimiterBlock(needPow, maxInserterLv, beltLevel, filterId = 0
       continue;
     }
 
-    let inserter = createBeltInserter(
-      source,
-      target,
-      Math.min(toInt(plan[i].lv, maxInserterLv), toInt(maxInserterLv, 1)),
-      filterId,
+    inserters.push(
+      ...createBeltBridgeConnector(
+        source,
+        target,
+        config,
+        Math.min(toInt(plan[i].lv, maxInserterLv), toInt(maxInserterLv, 1)),
+        filterId,
+      ),
     );
-    inserters.push(inserter);
   }
 
   return {
@@ -2212,7 +2304,7 @@ function buildMode2MainBus(segmentMetas, baseBuildings, config, needsById = {}, 
         continue;
       }
 
-      connectors.push(createBeltInserter(sourceBelt, inputHead.head, inserterLevel, itemId));
+      connectors.push(...createBeltBridgeConnector(sourceBelt, inputHead.head, config, inserterLevel, itemId));
     }
 
     let backflowHead = meta.backflowHead;
@@ -2234,7 +2326,7 @@ function buildMode2MainBus(segmentMetas, baseBuildings, config, needsById = {}, 
       linkBelt(backflowHead, targetBelt);
       backflowHead.outputToSlot = 2;
     } else {
-      connectors.push(createBeltInserter(backflowHead, targetBelt, inserterLevel, mainItemId));
+      connectors.push(...createBeltBridgeConnector(backflowHead, targetBelt, config, inserterLevel, mainItemId));
     }
 
     let outputTail = meta.outputTail;
@@ -2244,7 +2336,7 @@ function buildMode2MainBus(segmentMetas, baseBuildings, config, needsById = {}, 
     }
 
     let limitNeed = Math.max(0.5, toNumber(meta.outputPerSecond, 0));
-    let limiterBlock = createMode2LimiterBlock(limitNeed, inserterLevel, beltLevel, mainItemId);
+    let limiterBlock = createMode2LimiterBlock(limitNeed, inserterLevel, beltLevel, mainItemId, config);
     if (!limiterBlock.inputBelt || !limiterBlock.outputBelt) {
       continue;
     }
@@ -2318,7 +2410,7 @@ function buildMode2MainBus(segmentMetas, baseBuildings, config, needsById = {}, 
       }
 
       let lv = toInt(rawOreBlock.inputTransPlan?.[j]?.lv, inserterLevel);
-      rawOreBlock.buildings.push(createBeltInserter(sourceBelt, busTarget, lv));
+      rawOreBlock.buildings.push(...createBeltBridgeConnector(sourceBelt, busTarget, config, lv));
       hasConnector = true;
     }
 
@@ -2335,12 +2427,12 @@ function buildMode2MainBus(segmentMetas, baseBuildings, config, needsById = {}, 
       }
 
       let lv = toInt(rawOreBlock.outputTransPlan?.[j]?.lv, inserterLevel);
-      rawOreBlock.buildings.push(createBeltInserter(busSource, targetBeltInBlock, lv, itemId));
+      rawOreBlock.buildings.push(...createBeltBridgeConnector(busSource, targetBeltInBlock, config, lv, itemId));
       hasConnector = true;
     }
 
     if (!hasConnector) {
-      rawOreBlock.buildings.push(createBeltInserter(rawOreBlock.outputBelt, targetBelt, inserterLevel, itemId));
+      rawOreBlock.buildings.push(...createBeltBridgeConnector(rawOreBlock.outputBelt, targetBelt, config, inserterLevel, itemId));
     }
 
     rawOreBuildings.push(...rawOreBlock.buildings);
@@ -2388,24 +2480,122 @@ function createPowerTowerGrid(existingBuildings) {
   let height = Math.max(1, maxY - minY);
 
   let totalTowers = Math.max(1, Math.ceil(existingBuildings.length / 15));
-  let cols = Math.max(1, Math.ceil(Math.sqrt(totalTowers * (width / Math.max(1, height)))));
-  let rows = Math.max(1, Math.ceil(totalTowers / cols));
+  let topY = minY + 2;
+  let bottomY = maxY + 1;
+  let middleY = Math.floor((topY + bottomY) / 2) + 1;
+  let plannedPoints = [
+    { x: minX + 8, y: topY },
+    { x: minX + 12, y: topY },
+    { x: minX + 2, y: bottomY },
+    { x: minX + 6, y: bottomY },
+    { x: minX + 10, y: middleY },
+  ];
 
   let towers = [];
-  for (let row = 0; row < rows; row++) {
-    for (let col = 0; col < cols; col++) {
-      if (towers.length >= totalTowers) {
-        return towers;
-      }
-      let tower = createPowerTowerBuilding();
+  let used = {};
+  for (let i = 0; i < plannedPoints.length && towers.length < totalTowers; i++) {
+    let point = plannedPoints[i];
+    let clampedX = Math.max(minX, Math.min(maxX, toInt(point.x, minX)));
+    let clampedY = Math.max(minY, Math.min(maxY + 1, toInt(point.y, minY)));
+    let key = `${clampedX}_${clampedY}`;
+    if (used[key]) {
+      continue;
+    }
+
+    let tower = createPowerTowerBuilding();
+    BlueprintUtils.setBuildPos(tower, clampedX, clampedY, 0);
+    towers.push(tower);
+    used[key] = 1;
+  }
+
+  if (towers.length >= totalTowers) {
+    return towers;
+  }
+
+  let cols = Math.max(1, Math.ceil(Math.sqrt(totalTowers * (width / Math.max(1, height)))));
+  let rows = Math.max(1, Math.ceil(totalTowers / cols));
+  for (let row = 0; row < rows && towers.length < totalTowers; row++) {
+    for (let col = 0; col < cols && towers.length < totalTowers; col++) {
       let x = minX + Math.floor(width * (col + 0.5) / cols);
       let y = minY + Math.floor(height * (row + 0.5) / rows);
+      let key = `${x}_${y}`;
+      if (used[key]) {
+        continue;
+      }
+      let tower = createPowerTowerBuilding();
       BlueprintUtils.setBuildPos(tower, x, y, 0);
       towers.push(tower);
+      used[key] = 1;
     }
   }
 
   return towers;
+}
+
+function normalizeBeltYawByOutput(buildings) {
+  if (!Array.isArray(buildings) || buildings.length === 0) {
+    return;
+  }
+
+  let byIndex = {};
+  let inboundByTarget = {};
+  for (let i = 0; i < buildings.length; i++) {
+    let building = buildings[i];
+    let index = toInt(building?.index, -1);
+    byIndex[index] = building;
+
+    let outputObjIdx = toInt(building?.outputObjIdx, -1);
+    if (outputObjIdx >= 0) {
+      if (!Array.isArray(inboundByTarget[outputObjIdx])) {
+        inboundByTarget[outputObjIdx] = [];
+      }
+      inboundByTarget[outputObjIdx].push(building);
+    }
+  }
+
+  for (let i = 0; i < buildings.length; i++) {
+    let building = buildings[i];
+    let itemId = toInt(building?.itemId, 0);
+    if (!BELT_ITEM_IDS[1] || !Object.values(BELT_ITEM_IDS).includes(itemId)) {
+      continue;
+    }
+
+    let outputObjIdx = toInt(building?.outputObjIdx, -1);
+    if (outputObjIdx < 0) {
+      continue;
+    }
+
+    let target = byIndex[outputObjIdx];
+    if (!target) {
+      continue;
+    }
+
+    let from = BlueprintUtils.getBuildPos(building);
+    let to = BlueprintUtils.getBuildPos(target);
+    let yaw = calcYaw(toNumber(from?.x, 0), toNumber(from?.y, 0), toNumber(to?.x, 0), toNumber(to?.y, 0));
+    building.yaw = [yaw, yaw];
+  }
+
+  for (let i = 0; i < buildings.length; i++) {
+    let building = buildings[i];
+    let itemId = toInt(building?.itemId, 0);
+    if (!BELT_ITEM_IDS[1] || !Object.values(BELT_ITEM_IDS).includes(itemId)) {
+      continue;
+    }
+
+    let outputObjIdx = toInt(building?.outputObjIdx, -1);
+    if (outputObjIdx >= 0) {
+      continue;
+    }
+
+    let inbound = inboundByTarget[toInt(building?.index, -1)] || [];
+    if (inbound.length === 0) {
+      continue;
+    }
+
+    let sourceYaw = toInt(inbound[0]?.yaw?.[0], toInt(building?.yaw?.[0], 0));
+    building.yaw = [sourceYaw, sourceYaw];
+  }
 }
 
 function buildSingleRowBlueprint(rowInfo, config, options = {}) {
@@ -2489,13 +2679,64 @@ function buildMainLineBlueprint(rows, config, options = {}) {
     }
   }
 
-  if ((modeType === 1 || modeType === 2 || modeType === 3) && buildings.length > 0) {
+  if (toInt(config?.enablePowerTower, 1) > 0 && (modeType === 1 || modeType === 2 || modeType === 3) && buildings.length > 0) {
     let powerTowers = createPowerTowerGrid(buildings);
     if (powerTowers.length > 0) {
-      buildings = buildings.concat(powerTowers);
-      finalizeBlockIndices(buildings);
+      let preTowerCount = Math.min(2, powerTowers.length);
+      let preTowers = powerTowers.slice(0, preTowerCount);
+      let tailTowers = powerTowers.slice(preTowerCount);
+
+      let insertAt = buildings.length;
+      for (let i = 0; i < buildings.length; i++) {
+        let building = buildings[i];
+        if (toInt(building?.itemId, 0) !== 2001) {
+          continue;
+        }
+        if (toNumber(building?.localOffset?.[0]?.y, 0) >= 5) {
+          insertAt = i;
+          break;
+        }
+      }
+
+      if (preTowers.length > 0 && insertAt < buildings.length) {
+        let insertIndexThreshold = toInt(buildings[insertAt]?.index, buildings.length);
+
+        for (let i = 0; i < buildings.length; i++) {
+          let building = buildings[i];
+          if (toInt(building.index, -1) >= insertIndexThreshold) {
+            building.index = toInt(building.index, -1) + preTowerCount;
+          }
+          if (toInt(building.outputObjIdx, -1) >= insertIndexThreshold) {
+            building.outputObjIdx = toInt(building.outputObjIdx, -1) + preTowerCount;
+          }
+          if (toInt(building.inputObjIdx, -1) >= insertIndexThreshold) {
+            building.inputObjIdx = toInt(building.inputObjIdx, -1) + preTowerCount;
+          }
+        }
+
+        for (let i = 0; i < preTowers.length; i++) {
+          preTowers[i].index = insertIndexThreshold + i;
+        }
+
+        let tailBase = buildings.length + preTowers.length;
+        for (let i = 0; i < tailTowers.length; i++) {
+          tailTowers[i].index = tailBase + i;
+        }
+
+        let head = buildings.slice(0, insertAt);
+        let tail = buildings.slice(insertAt);
+        buildings = head.concat(preTowers, tail, tailTowers);
+      } else {
+        let baseIndex = buildings.length;
+        for (let i = 0; i < powerTowers.length; i++) {
+          powerTowers[i].index = baseIndex + i;
+        }
+        buildings = buildings.concat(powerTowers);
+      }
     }
   }
+
+  normalizeBeltYawByOutput(buildings);
 
   let data = buildBlueprintDataFromBuildings(buildings, options.shortDesc || '主线蓝图');
   return {
