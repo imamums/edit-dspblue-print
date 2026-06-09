@@ -106,7 +106,7 @@ var DEFAULT_SETTINGS = {
   acc_rate: 1,
   inc_rate: 1,
   blue_buff: false,
-  mineralize_list: [],
+  mineralize_list: {},
   natural_production_line: [],
 };
 

@@ -34,6 +34,16 @@
               </el-option>
             </el-select>
 
+            <RecipeSelector
+              v-if="runtime && need.itemName"
+              :item="need.itemName"
+              :choice="getRecipeChoice(need.itemName)"
+              :game-data="runtime.gameData"
+              :item-data="runtime.provider.itemData"
+              @change="setRecipeChoice(need.itemName, $event)"
+              class="need-recipe"
+            />
+
             <el-input-number
               v-model="need.amount"
               :min="0"
@@ -58,6 +68,11 @@
           <div class="need-actions">
             <el-button size="small" @click="addNeed">新增需求</el-button>
             <el-button size="small" @click="clearNeeds">清空需求</el-button>
+            <el-divider direction="vertical"></el-divider>
+            <span class="label">快速填充：</span>
+            <el-button size="mini" plain @click="applyQuickNeed('宇宙矩阵', 60)">白糖 60</el-button>
+            <el-button size="mini" plain @click="applyQuickNeed('引力透镜', 60)">透镜 60</el-button>
+            <el-button size="mini" plain @click="applyQuickNeed('空间翘曲器', 60)">翘曲器 120</el-button>
           </div>
         </div>
       </el-form-item>
@@ -133,6 +148,15 @@
 
       <el-collapse>
         <el-collapse-item title="高级配置：各工厂单排上限">
+          <div class="preset-row">
+            <span class="label">批量预设：</span>
+            <el-button size="mini" @click="setAllMaxCount(15)">15</el-button>
+            <el-button size="mini" @click="setAllMaxCount(20)">20</el-button>
+            <el-button size="mini" @click="setAllMaxCount(30)">30</el-button>
+            <el-button size="mini" @click="setAllMaxCount(50)">50</el-button>
+            <el-button size="mini" @click="setAllMaxCount(60)">60</el-button>
+            <el-button size="mini" @click="setAllMaxCount(100)">100</el-button>
+          </div>
           <div class="config-grid">
             <div class="config-item">
               <span class="label">熔炉上限</span>
@@ -216,6 +240,22 @@
       show-icon
     ></el-alert>
 
+    <div class="mineralize-summary" v-if="runtime && Object.keys(runtime.settings.mineralize_list || {}).length">
+      <div class="title">视为原矿列表：</div>
+      <div class="tags">
+        <el-tag
+          v-for="(val, itemName) in runtime.settings.mineralize_list"
+          :key="itemName"
+          closable
+          size="small"
+          @close="unmarkRawMaterial(itemName)"
+        >
+          {{ itemName }}
+        </el-tag>
+        <el-button type="text" size="mini" @click="clearAllRawMaterials">清空</el-button>
+      </div>
+    </div>
+
     <div class="recipe-list" v-if="generatedRows.length">
       <div class="recipe-title">生成配方</div>
       <div class="recipe-card" v-for="(row, index) in generatedRows" :key="index">
@@ -227,8 +267,26 @@
               :game-icon-name="row.mainItemIconName"
             />
             <span>{{ row.mainItemName }}</span>
+            <RecipeSelector
+              v-if="runtime"
+              :item="row.mainItemName"
+              :choice="getRecipeChoice(row.mainItemName)"
+              :game-data="runtime.gameData"
+              :item-data="runtime.provider.itemData"
+              @change="updateRecipeAndRegenerate(row.mainItemName, $event)"
+              class="result-recipe"
+            />
           </div>
-          <div class="factory">{{ row.factoryName }} x {{ row.machineCount }}</div>
+          <div class="header-actions">
+            <el-button
+              v-if="!runtime.settings.mineralize_list[row.mainItemName]"
+              type="text"
+              size="mini"
+              @click="markAsRawMaterial(row.mainItemName)"
+              >视为原矿</el-button
+            >
+            <div class="factory">{{ row.factoryName }} x {{ row.machineCount }}</div>
+          </div>
         </div>
         <div class="recipe-flow">
           <div class="io-side">
@@ -276,6 +334,7 @@
 <script>
 import * as itemsUtil from "@/utils/itemsUtil";
 import ItemIcon from "./ItemIcon.vue";
+import RecipeSelector from "./RecipeSelector.vue";
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -297,6 +356,7 @@ export default {
   name: "BlueprintGeneratorPanel",
   components: {
     ItemIcon,
+    RecipeSelector,
   },
   data() {
     return {
@@ -374,6 +434,9 @@ export default {
         const provider = new GameDataProvider(gameData);
         const schemeData = buildDefaultScheme(gameData);
         const settings = clone(DEFAULT_SETTINGS);
+        if (Array.isArray(settings.mineralize_list)) {
+          settings.mineralize_list = {};
+        }
         this.runtime = {
           gameData,
           provider,
@@ -442,6 +505,58 @@ export default {
     },
     clearNeeds() {
       this.needsList = [{ itemName: this.itemOptions[0] || "", amount: 60 }];
+    },
+    getRecipeChoice(itemName) {
+      return this.runtime?.schemeData?.item_recipe_choices?.[itemName] || 1;
+    },
+    setRecipeChoice(itemName, choice) {
+      if (this.runtime?.schemeData?.item_recipe_choices) {
+        this.$set(this.runtime.schemeData.item_recipe_choices, itemName, choice);
+      }
+    },
+    updateRecipeAndRegenerate(itemName, choice) {
+      this.setRecipeChoice(itemName, choice);
+      this.generateBlueprintByNeeds();
+    },
+    setAllMaxCount(val) {
+      this.config.smelterMaxCount = val;
+      this.config.workbenchMaxCount = val;
+      this.config.refineryMaxCount = val;
+      this.config.chemicalMaxCount = val;
+      this.config.colliderMaxCount = val;
+    },
+    markAsRawMaterial(itemName) {
+      if (!this.runtime) return;
+      if (!this.runtime.settings.mineralize_list) {
+        this.$set(this.runtime.settings, "mineralize_list", {});
+      }
+      this.$set(this.runtime.settings.mineralize_list, itemName, true);
+      this.generateBlueprintByNeeds();
+    },
+    unmarkRawMaterial(itemName) {
+      if (!this.runtime?.settings?.mineralize_list) return;
+      this.$delete(this.runtime.settings.mineralize_list, itemName);
+      this.generateBlueprintByNeeds();
+    },
+    clearAllRawMaterials() {
+      if (!this.runtime?.settings) return;
+      this.$set(this.runtime.settings, "mineralize_list", {});
+      this.generateBlueprintByNeeds();
+    },
+    applyQuickNeed(itemName, amount) {
+      // Find if item already exists
+      const existing = this.needsList.find(n => n.itemName === itemName);
+      if (existing) {
+        existing.amount = amount;
+      } else {
+        if (this.needsList.length === 1 && !this.needsList[0].itemName) {
+          this.needsList[0].itemName = itemName;
+          this.needsList[0].amount = amount;
+        } else {
+          this.needsList.push({ itemName, amount });
+        }
+      }
+      this.$message.info(`已预设需求: ${itemName} x ${amount}`);
     },
     buildNeedsMap() {
       const needsMap = {};
@@ -526,7 +641,7 @@ export default {
           ),
           factory_name: factory.名称,
           machineId: gameData.name_id_dict[factory.名称],
-          ignore: false,
+          ignore: !!this.runtime?.settings?.mineralize_list?.[itemName],
         };
 
         const rowInfo = this.blueprintModules.buildBlueprintRowInfo(row, gameData);
@@ -539,6 +654,9 @@ export default {
       return rows;
     },
     isRawMaterialItem(itemName, calculator, schemeData, gameData) {
+      if (this.runtime?.settings?.mineralize_list?.[itemName]) {
+        return true;
+      }
       try {
         const recipeIndex = calculator.itemData[itemName][schemeData.item_recipe_choices[itemName]];
         const recipe = gameData.recipe_data[recipeIndex];
@@ -701,6 +819,12 @@ export default {
       .unit {
         color: #909399;
         font-size: 12px;
+        margin: 0 4px;
+      }
+
+      .need-recipe {
+        margin: 0 8px;
+        flex-shrink: 0;
       }
 
       .remove-btn {
@@ -709,9 +833,52 @@ export default {
     }
   }
 
+  .preset-row {
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+
+    .label {
+      font-size: 13px;
+      color: #606266;
+    }
+  }
+
   .need-actions {
     display: flex;
+    align-items: center;
     gap: 8px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+
+    .label {
+      font-size: 13px;
+      color: #606266;
+    }
+  }
+
+  .mineralize-summary {
+    margin-top: 15px;
+    padding: 10px;
+    background: #fdf6ec;
+    border-radius: 4px;
+    border: 1px solid #faecd8;
+
+    .title {
+      font-size: 12px;
+      color: #e6a23c;
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+
+    .tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
   }
 
   .config-grid {
@@ -784,6 +951,17 @@ export default {
       gap: 6px;
       font-weight: 600;
       color: #303133;
+
+      .result-recipe {
+        margin-left: 8px;
+        font-weight: normal;
+      }
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
     }
 
     .factory {
