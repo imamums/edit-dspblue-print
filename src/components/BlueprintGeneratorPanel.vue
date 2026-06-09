@@ -216,6 +216,11 @@
             <span class="label">生成电线杆</span>
             <el-switch v-model="config.enablePowerTower"></el-switch>
           </div>
+
+          <div class="config-item">
+            <span class="label">四向分流器连接</span>
+            <el-switch v-model="config.useFourWaySplitter"></el-switch>
+          </div>
         </div>
       </el-form-item>
 
@@ -425,6 +430,8 @@ function toInt(value, fallback = 0) {
   return Math.trunc(toNumber(value, fallback));
 }
 
+const GENERATOR_STATE_CACHE_KEY = "dsp.generator.state.v1";
+
 export default {
   name: "BlueprintGeneratorPanel",
   components: {
@@ -455,15 +462,133 @@ export default {
         chemicalMaxCount: 15,
         colliderMaxCount: 15,
         enablePowerTower: true,
+        useFourWaySplitter: false,
       },
       blueprintModules: null,
       calcModules: null,
     };
   },
+  watch: {
+    shortDesc() {
+      this.queuePersistGeneratorState();
+    },
+    needsList: {
+      handler() {
+        this.queuePersistGeneratorState();
+      },
+      deep: true,
+    },
+    config: {
+      handler() {
+        this.queuePersistGeneratorState();
+      },
+      deep: true,
+    },
+  },
   mounted() {
     this.initRuntime();
   },
+  beforeDestroy() {
+    clearTimeout(this.persistStateTimer_);
+  },
   methods: {
+    queuePersistGeneratorState() {
+      clearTimeout(this.persistStateTimer_);
+      this.persistStateTimer_ = setTimeout(() => {
+        this.persistGeneratorState();
+      }, 120);
+    },
+    sanitizeNeedsList(list) {
+      const next = Array.isArray(list)
+        ? list
+            .map((need) => ({
+              itemName: String(need?.itemName || "").trim(),
+              amount: toNumber(need?.amount, 0),
+            }))
+            .filter((need) => need.itemName || need.amount > 0)
+        : [];
+      if (next.length > 0) {
+        return next;
+      }
+      return [{ itemName: this.itemOptions[0] || "", amount: 60 }];
+    },
+    normalizeConfig(config) {
+      const src = config || {};
+      const pickBool = (key, fallback) => {
+        if (typeof src[key] === "boolean") {
+          return src[key];
+        }
+        return fallback;
+      };
+      return {
+        beltLv: toInt(src.beltLv, this.config.beltLv),
+        inserterLv: toInt(src.inserterLv, this.config.inserterLv),
+        modeType: toInt(src.modeType, this.config.modeType),
+        mergeType: toInt(src.mergeType, this.config.mergeType),
+        maxMachineInALine: toInt(src.maxMachineInALine, this.config.maxMachineInALine),
+        blockWidthLimit: toInt(src.blockWidthLimit, this.config.blockWidthLimit),
+        useMode2MainBus: pickBool("useMode2MainBus", this.config.useMode2MainBus),
+        smelterMaxCount: toInt(src.smelterMaxCount, this.config.smelterMaxCount),
+        workbenchMaxCount: toInt(src.workbenchMaxCount, this.config.workbenchMaxCount),
+        refineryMaxCount: toInt(src.refineryMaxCount, this.config.refineryMaxCount),
+        chemicalMaxCount: toInt(src.chemicalMaxCount, this.config.chemicalMaxCount),
+        colliderMaxCount: toInt(src.colliderMaxCount, this.config.colliderMaxCount),
+        enablePowerTower: pickBool("enablePowerTower", this.config.enablePowerTower),
+        useFourWaySplitter: pickBool("useFourWaySplitter", this.config.useFourWaySplitter),
+      };
+    },
+    restoreGeneratorState() {
+      let cached = null;
+      try {
+        const text = String(localStorage.getItem(GENERATOR_STATE_CACHE_KEY) || "").trim();
+        if (!text) {
+          return;
+        }
+        cached = JSON.parse(text);
+      } catch (error) {
+        console.warn("generator-state-restore-failed", error);
+        return;
+      }
+
+      if (!cached || typeof cached !== "object") {
+        return;
+      }
+
+      if (typeof cached.shortDesc === "string") {
+        this.shortDesc = cached.shortDesc;
+      }
+
+      this.needsList = this.sanitizeNeedsList(cached.needsList);
+      this.config = this.normalizeConfig(cached.config);
+
+      if (this.runtime?.schemeData?.item_recipe_choices && cached.recipeChoices) {
+        this.runtime.schemeData.item_recipe_choices = {
+          ...this.runtime.schemeData.item_recipe_choices,
+          ...cached.recipeChoices,
+        };
+      }
+      if (this.runtime?.settings) {
+        const mineralizeList = cached.mineralizeList;
+        this.runtime.settings.mineralize_list =
+          mineralizeList && typeof mineralizeList === "object" && !Array.isArray(mineralizeList)
+            ? { ...mineralizeList }
+            : {};
+      }
+    },
+    persistGeneratorState() {
+      const payload = {
+        shortDesc: String(this.shortDesc || ""),
+        needsList: clone(this.needsList),
+        config: clone(this.config),
+        recipeChoices: clone(this.runtime?.schemeData?.item_recipe_choices || {}),
+        mineralizeList: clone(this.runtime?.settings?.mineralize_list || {}),
+      };
+      try {
+        localStorage.setItem(GENERATOR_STATE_CACHE_KEY, JSON.stringify(payload));
+      } catch (error) {
+        console.warn("generator-state-persist-failed", error);
+      }
+    },
     async ensureBlueprintModules() {
       if (this.blueprintModules) {
         return this.blueprintModules;
@@ -521,6 +646,8 @@ export default {
         if (this.itemOptions.length > 0 && !this.needsList[0].itemName) {
           this.needsList[0].itemName = this.itemOptions[0];
         }
+        this.restoreGeneratorState();
+        this.queuePersistGeneratorState();
       } catch (error) {
         console.error("init-runtime-error", error);
         this.$message.error("初始化生成器数据失败，请检查控制台");
@@ -610,6 +737,7 @@ export default {
     setRecipeChoice(itemName, choice) {
       if (this.runtime?.schemeData?.item_recipe_choices) {
         this.$set(this.runtime.schemeData.item_recipe_choices, itemName, choice);
+        this.queuePersistGeneratorState();
       }
     },
     updateRecipeAndRegenerate(itemName, choice) {
@@ -629,16 +757,19 @@ export default {
         this.$set(this.runtime.settings, "mineralize_list", {});
       }
       this.$set(this.runtime.settings.mineralize_list, itemName, true);
+      this.queuePersistGeneratorState();
       this.generateBlueprintByNeeds();
     },
     unmarkRawMaterial(itemName) {
       if (!this.runtime?.settings?.mineralize_list) return;
       this.$delete(this.runtime.settings.mineralize_list, itemName);
+      this.queuePersistGeneratorState();
       this.generateBlueprintByNeeds();
     },
     clearAllRawMaterials() {
       if (!this.runtime?.settings) return;
       this.$set(this.runtime.settings, "mineralize_list", {});
+      this.queuePersistGeneratorState();
       this.generateBlueprintByNeeds();
     },
     applyQuickNeed(itemName, amount) {
@@ -683,6 +814,7 @@ export default {
       cfg.colliderMaxCount = toInt(this.config.colliderMaxCount, 15);
       cfg.useMode2MainBus = this.config.useMode2MainBus ? 1 : 0;
       cfg.enablePowerTower = this.config.enablePowerTower ? 1 : 0;
+      cfg.useFourWaySplitter = this.config.useFourWaySplitter ? 1 : 0;
       return cfg;
     },
     calcFactoryCount(outputPerTime, itemName, calculator, schemeData, gameData, fixedNum, timeScale) {

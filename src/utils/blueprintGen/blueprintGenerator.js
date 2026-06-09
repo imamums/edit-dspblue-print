@@ -1700,6 +1700,31 @@ function createBeltInserter(source, target, inserterLevel, filterId = 0) {
   return inserter;
 }
 
+function createOrthogonalBeltPath(startX, startY, endX, endY) {
+  let sx = toNumber(startX, 0);
+  let sy = toNumber(startY, 0);
+  let ex = toNumber(endX, 0);
+  let ey = toNumber(endY, 0);
+
+  if (Math.abs(sx - ex) < 0.000001 && Math.abs(sy - ey) < 0.000001) {
+    return [{ x: sx, y: sy, z: 0 }];
+  }
+
+  if (Math.abs(sx - ex) < 0.000001 || Math.abs(sy - ey) < 0.000001) {
+    return createPathByPoints([
+      { x: sx, y: sy, z: 0 },
+      { x: ex, y: ey, z: 0 },
+    ]);
+  }
+
+  let cornerA = { x: ex, y: sy, z: 0 };
+  return createPathByPoints([
+    { x: sx, y: sy, z: 0 },
+    cornerA,
+    { x: ex, y: ey, z: 0 },
+  ]);
+}
+
 function createBeltSplitterBridge(source, target, beltLevel, filterId = 0) {
   if (!source || !target) {
     return [];

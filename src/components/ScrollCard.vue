@@ -4,11 +4,11 @@
     <div class="navScrollBar" v-show="!hideBar && (!hideBarWhenOnlyOne || menuNames.length>1)">
       <!--导航选择事件-->
       <el-scrollbar ref="scrollBarRef" :vertical="false">
-        <el-menu class="menuBar" :default-active="activeStep" @select="jump" mode="horizontal">
+        <el-menu ref="menuRef" class="menuBar" :default-active="activeStep" @select="onMenuSelect" mode="horizontal">
           <el-menu-item v-for="(item, index) in menuNames" :index="''+index" :key="index">
             <span slot="title">{{ item }}</span>
           </el-menu-item>
-          <el-menu-item v-for="(item, index) in otherLinks" :index="''+(menuNames.length+index)" :key="menuNames.length+index" @click="openLink(item.url)">
+          <el-menu-item v-for="(item, index) in otherLinks" :index="''+(menuNames.length+index)" :key="menuNames.length+index">
             <span slot="title">{{ item.name }}</span>
           </el-menu-item>
         </el-menu>
@@ -53,7 +53,27 @@ export default {
       animationBind_: null, // 动画帧定时器绑定对象
     };
   },
+  activated() {
+    this.restoreMenuActive();
+  },
   methods: {
+    onMenuSelect(index) {
+      const menuIndex = Number(index);
+      if (menuIndex >= this.menuNames.length) {
+        const link = this.otherLinks?.[menuIndex - this.menuNames.length];
+        this.openLink(link?.url);
+        this.restoreMenuActive();
+        return;
+      }
+      this.jump(menuIndex);
+    },
+    restoreMenuActive() {
+      this.$nextTick(() => {
+        const menuRef = this.$refs.menuRef;
+        if (!menuRef) return;
+        menuRef.activeIndex = this.activeStep;
+      });
+    },
     openLink(url) {
       const link = String(url || "").trim();
       if (!link) return;

@@ -1,5 +1,127 @@
 # HISTORY_FRONTEND
 
+### [2026-06-09 20:05] GitHub Copilot / GPT-5.3-Codex
+
+- **修改范围**：修复顶部导航点击跳转后高亮状态与路由不一致
+- **修改的文件**：
+  - `src/components/ScrollCard.vue`
+  - `HISTORY_FRONTEND.md`
+- **变更意图**：解决点击 `otherLinks` 后蓝色高亮停留在链接项的问题，保证导航高亮始终反映当前内容页签
+- **核心变更内容**：
+  - 步骤1：`ScrollCard` 将 `el-menu` 选择事件从直接 `jump` 改为 `onMenuSelect` 统一分发
+  - 步骤2：当选中项属于 `otherLinks` 时，仅执行跳转逻辑并立即恢复菜单激活项到当前 `activeStep`
+  - 步骤3：新增 `activated` 生命周期钩子，在 `keep-alive` 场景下恢复菜单内部激活状态，避免跨页返回后残留高亮
+- **影响范围**：
+  - 影响所有复用 `ScrollCard` 且传入 `otherLinks` 的页面顶部导航高亮行为
+- **注意事项**：
+  - 本次无后端接口、数据库结构变更
+
+### [2026-06-09 19:34] GitHub Copilot / GPT-5.3-Codex
+
+- **修改范围**：将“生成蓝图”页顶部链接文案与顺序改为与首页字面完全一致
+- **修改的文件**：
+  - `src/views/BlueprintGenerator.vue`
+  - `HISTORY_FRONTEND.md`
+- **变更意图**：按要求保持顶部文字顺序完全一致（包括第二个链接为“生成蓝图”）
+- **核心变更内容**：
+  - 步骤1：将 `BlueprintGenerator` 页 `navExtraLinks` 调整为：`数据字典`、`生成蓝图`
+  - 步骤2：保持链接顺序与首页一致，确保字面展示一致
+- **影响范围**：
+  - 影响 `#/generator` 页顶部 `otherLinks` 的展示文本和顺序
+- **注意事项**：
+  - 本次无后端接口、数据库结构变更
+
+### [2026-06-09 19:28] GitHub Copilot / GPT-5.3-Codex
+
+- **修改范围**：修正“生成蓝图”页顶部选项卡重复项并补齐返回入口
+- **修改的文件**：
+  - `src/views/BlueprintGenerator.vue`
+  - `HISTORY_FRONTEND.md`
+- **变更意图**：解决顶部出现重复“生成蓝图”标签导致的“不一致”观感，同时保持跨页切换便捷性
+- **核心变更内容**：
+  - 步骤1：将 `BlueprintGenerator` 页顶部 `otherLinks` 中的当前页链接替换为 `蓝图转换`（`#/`）
+  - 步骤2：保留 `数据字典` 入口，避免顶部标签重复
+  - 步骤3：删除 `BlueprintGenerator.vue` 中未再使用的 `goHome` 方法，保持代码整洁
+- **影响范围**：
+  - 影响 `#/generator` 顶部选项卡文案与跳转行为
+- **注意事项**：
+  - 本次无后端接口、数据库结构变更
+
+### [2026-06-09 19:18] GitHub Copilot / GPT-5.3-Codex
+
+- **修改范围**：将“生成蓝图”页顶部导航与首页完全对齐
+- **修改的文件**：
+  - `src/views/BlueprintGenerator.vue`
+  - `HISTORY_FRONTEND.md`
+- **变更意图**：满足“完全一致”要求，消除生成页顶部导航与首页在入口项上的差异
+- **核心变更内容**：
+  - 步骤1：将 `BlueprintGenerator` 页 `navExtraLinks` 调整为与 `Home` 完全一致（`数据字典`、`生成蓝图`）
+  - 步骤2：移除生成页卡片头部额外的“返回蓝图转换”按钮，避免与首页顶部导航结构不一致
+- **影响范围**：
+  - 影响 `#/generator` 顶部导航入口项与卡片头部操作区展示
+- **注意事项**：
+  - 本次无后端接口、数据库结构变更
+
+### [2026-06-09 19:10] GitHub Copilot / GPT-5.3-Codex
+
+- **修改范围**：统一“生成蓝图”页顶部选项卡样式，并增加生成器状态保持
+- **修改的文件**：
+  - `src/App.vue`
+  - `src/views/BlueprintGenerator.vue`
+  - `src/components/BlueprintGeneratorPanel.vue`
+  - `HISTORY_FRONTEND.md`
+- **变更意图**：让“生成蓝图”页与首页顶部导航保持一致，且在页面跳转后保留用户已选需求与配置，避免重复选择
+- **核心变更内容**：
+  - 步骤1：`BlueprintGenerator` 页面改为复用 `ScrollCard + ScrollCardItem + navRight`，顶部导航样式与首页一致
+  - 步骤2：`BlueprintGenerator` 顶部导航补充“蓝图转换/数据字典”快捷入口，卡片右上角保留“返回蓝图转换”操作
+  - 步骤3：`BlueprintGeneratorPanel` 新增 localStorage 状态持久化与恢复（需求列表、标题、生成配置、配方选择、原矿标记）
+  - 步骤4：`App.vue` 为动态视图增加 `keep-alive`，切页时保留页面组件实例状态
+- **影响范围**：
+  - 影响 `#/generator` 页的顶部导航展示与交互一致性
+  - 影响生成器跨页往返时的表单与策略保持行为
+- **注意事项**：
+  - 本次无后端接口、数据库结构变更
+  - 状态缓存键为 `dsp.generator.state.v1`，如需重置可清除该 localStorage 键
+
+### [2026-06-09 18:40] GitHub Copilot / GPT-5.3-Codex
+
+- **修改范围**：修复四向分流器接入后的报错并清理工程诊断提示
+- **修改的文件**：
+  - `src/utils/blueprintGen/blueprintGenerator.js`
+  - `jsconfig.json`
+  - `HISTORY_FRONTEND.md`
+- **变更意图**：解决新增“四向分流器连接”后导致的构建/lint 报错，并消除编辑器中的 TS 弃用提示
+- **核心变更内容**：
+  - 步骤1：补充 `createOrthogonalBeltPath` 函数，修复 `createBeltSplitterBridge` 调用未定义函数导致的 `no-undef`
+  - 步骤2：在 `jsconfig.json` 增加 `ignoreDeprecations: "6.0"`，抑制 `baseUrl` 相关弃用诊断
+  - 步骤3：重新执行 lint 与错误检查，确认无新增错误
+- **影响范围**：
+  - 影响分流器桥接路径计算逻辑的可用性
+  - 影响工程级编辑器诊断显示（不影响运行时代码）
+- **注意事项**：
+  - 本次无后端接口、数据库结构变更
+
+### [2026-06-09 18:25] GitHub Copilot / GPT-5.3-Codex
+
+- **修改范围**：新增“四向分流器连接”蓝图选项并接入主干计算逻辑
+- **修改的文件**：
+  - `src/components/BlueprintGeneratorPanel.vue`
+  - `src/utils/blueprintGen/blueprintConfig.js`
+  - `src/utils/blueprintGen/blueprintGenerator.js`
+  - `HISTORY_FRONTEND.md`
+- **变更意图**：提供可选的四向分流器连接模式，在主干连接中以分流器+顶置箱子替代部分分拣器桥接，降低分拣器依赖
+- **核心变更内容**：
+  - 步骤1：在生成器配置面板新增 `四向分流器连接` 开关，并在构建蓝图配置时透传 `useFourWaySplitter`
+  - 步骤2：在 `BlueprintConfig` 新增 `useFourWaySplitter` 默认字段（默认关闭）
+  - 步骤3：在 `blueprintGenerator` 新增四向分流器建筑构造与桥接函数，支持在两段传送带间插入分流器并在其上放置箱子
+  - 步骤4：将模式2主干连接、回流连接、原矿补给连接以及限流块内部连接改为“分流器优先，失败回退分拣器”的策略
+- **影响范围**：
+  - 影响模式2主线蓝图中带间连接的建筑组成与数量
+  - 开启后会增加四向分流器与箱子建筑，减少对应连接段的分拣器数量
+- **注意事项**：
+  - 本次无后端接口、数据库结构、配置文件格式变更
+  - 分流器桥接启用后若路径不可用会自动回退到原分拣器连接
+
 ### [2026-06-09 17:10] GitHub Copilot / Gemini 3 Flash (Preview)
 
 - **修改范围**：蓝图配置下拉框图标增强

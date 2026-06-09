@@ -1,11 +1,11 @@
 <template>
   <div class="generator-page">
     <div class="wrap">
-      <div class="page-header">
-        <div class="title">生成蓝图</div>
-        <el-button type="text" @click="goHome">返回蓝图转换</el-button>
-      </div>
-      <BlueprintGeneratorPanel @import-blueprint="importToTransformer"></BlueprintGeneratorPanel>
+      <ScrollCard :otherLinks="navExtraLinks" class="generator-scroll" :hideBarWhenOnlyOne="false">
+        <ScrollCardItem name="生成蓝图" :canFold="false">
+          <BlueprintGeneratorPanel @import-blueprint="importToTransformer"></BlueprintGeneratorPanel>
+        </ScrollCardItem>
+      </ScrollCard>
     </div>
   </div>
 </template>
@@ -16,12 +16,18 @@ const GENERATED_BLUEPRINT_CACHE_KEY = "dsp.generatedBlueprint";
 export default {
   name: "BlueprintGenerator",
   components: {
+    ScrollCard: () => import("@/components/ScrollCard.vue"),
+    ScrollCardItem: () => import("@/components/ScrollCardItem.vue"),
     BlueprintGeneratorPanel: () => import("@/components/BlueprintGeneratorPanel.vue"),
   },
+  data() {
+    return {
+      navExtraLinks: [
+        { name: "蓝图转换", url: "#/" },
+      ],
+    };
+  },
   methods: {
-    goHome() {
-      window.location.hash = "#/";
-    },
     importToTransformer(code) {
       const text = String(code || "").trim();
       if (!text.startsWith("BLUEPRINT:")) {
@@ -42,27 +48,59 @@ export default {
   min-height: 100vh;
 
   .wrap {
-    max-width: 1100px;
+    max-width: 1000px;
     margin: 0 auto;
-    padding: 20px;
-    box-sizing: border-box;
     background: #fff;
     box-shadow: 0 0 20px 15px #fff;
-    min-height: 100vh;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
     position: relative;
     z-index: 10;
   }
 
-  .page-header {
-    height: 44px;
+  .generator-scroll {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .navRight {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    margin-right: 5px;
 
-    .title {
-      font-size: 18px;
-      color: #303133;
-      font-weight: 600;
+    .item {
+      font-size: 12px;
+      color: #999;
+      text-decoration: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      padding: 5px;
+
+      img {
+        width: 16px;
+        height: 16px;
+      }
+
+      span {
+        margin-left: 5px;
+      }
+
+      &.hover span {
+        display: inline-block;
+        overflow: hidden;
+        transition: width 0.2s ease-in-out;
+      }
+
+      &.hover:not(:hover) span {
+        width: 0 !important;
+      }
+    }
+
+    .item:hover {
+      color: #3a8ee6;
+      text-decoration: underline;
     }
   }
 }

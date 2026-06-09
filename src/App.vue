@@ -1,6 +1,8 @@
 <template>
   <div id="app">
-    <component :is="activeView"></component>
+    <keep-alive>
+      <component :is="activeView"></component>
+    </keep-alive>
   </div>
 </template>
 
