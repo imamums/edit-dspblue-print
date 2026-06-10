@@ -27,8 +27,10 @@ const MACHINE_LAYOUT_CONFIG = {
     space: 3,
     lineSpacing: 3,
     bottomMidDistance: 1,
+    bottomLack: 0.2,
     topMidDistance: 1,
     leftMidDistance: 1,
+    outsideMidOffset: 0.2,
     yaw: 0,
   },
   2: {
@@ -36,8 +38,10 @@ const MACHINE_LAYOUT_CONFIG = {
     space: 4,
     lineSpacing: 3,
     bottomMidDistance: 1,
+    bottomLack: 0.2,
     topMidDistance: 1,
     leftMidDistance: 1,
+    outsideMidOffset: 0.2,
     yaw: 0,
   },
   3: {
@@ -45,8 +49,10 @@ const MACHINE_LAYOUT_CONFIG = {
     space: 6,
     lineSpacing: 3,
     bottomMidDistance: 1,
+    bottomLack: 0.2,
     topMidDistance: 1,
     leftMidDistance: 1,
+    outsideMidOffset: 0.2,
     yaw: 270,
   },
   4: {
@@ -54,8 +60,10 @@ const MACHINE_LAYOUT_CONFIG = {
     space: 7,
     lineSpacing: 4,
     bottomMidDistance: 1,
+    bottomLack: 0.28,
     topMidDistance: 2,
     leftMidDistance: 1,
+    outsideMidOffset: 0.2,
     yaw: 0,
   },
   5: {
@@ -63,8 +71,10 @@ const MACHINE_LAYOUT_CONFIG = {
     space: 10,
     lineSpacing: 5,
     bottomMidDistance: 2,
+    bottomLack: 0.28,
     topMidDistance: 2,
     leftMidDistance: 2,
+    outsideMidOffset: 0.2,
     yaw: 0,
   },
   6: {
@@ -72,8 +82,10 @@ const MACHINE_LAYOUT_CONFIG = {
     space: 5,
     lineSpacing: 5,
     bottomMidDistance: 2,
+    bottomLack: 0.2,
     topMidDistance: 2,
     leftMidDistance: 1,
+    outsideMidOffset: 0.2,
     yaw: 0,
   },
 };
@@ -95,11 +107,11 @@ const BUILDING_MODEL_INDEX_BY_ITEM_ID = {
   2001: 35,
   2002: 36,
   2003: 37,
-  2020: 38,
   2011: 41,
   2012: 42,
   2013: 43,
   2014: 483,
+  2020: 38,
   2101: 51,
   2103: 49,
   2107: 371,
@@ -259,6 +271,14 @@ function toInt(value, fallback = 0) {
   return Math.trunc(toNumber(value, fallback));
 }
 
+function isFourWaySplitterEnabled(config) {
+  return toInt(config?.useFourWaySplitter ?? config?.enableSplitter4Way, 0) > 0;
+}
+
+function isPowerTowerEnabled(config) {
+  return toInt(config?.enablePowerTower ?? config?.enablePowerTowers, 1) > 0;
+}
+
 function resolveLineLimit(rowInfo, config) {
   let defaultLimit = Math.max(1, toInt(config?.maxMachineInALine, 15));
   if (config && typeof config.getMachineMaxCount === 'function') {
@@ -373,24 +393,6 @@ function createStorageBoxBuilding() {
   return building;
 }
 
-function createSplitterBuilding() {
-  let building = BlueprintUtils.CreateEmptyBuilding();
-  building.itemId = 2020;
-  building.modelIndex = getModelIndexByItemId(2020);
-  building.areaIndex = 0;
-  building.recipeId = 0;
-  building.filterId = 0;
-  building.outputObjIdx = -1;
-  building.inputObjIdx = -1;
-  building.outputToSlot = 1;
-  building.inputFromSlot = 0;
-  building.outputFromSlot = 0;
-  building.inputToSlot = 1;
-  building.yaw = [0, 0];
-  building.parameters = null;
-  return building;
-}
-
 function createDeliveryBuilding() {
   let building = BlueprintUtils.CreateEmptyBuilding();
   building.itemId = 2107;
@@ -422,10 +424,28 @@ function createPowerTowerBuilding() {
   building.filterId = 0;
   building.outputObjIdx = -1;
   building.inputObjIdx = -1;
-  building.inputToSlot = 0;
+  building.inputToSlot = 1;
   building.outputToSlot = 0;
-  building.yaw = [0, 0];
+  building.yaw = [90, 90];
   building.parameters = null;
+  return building;
+}
+
+function createSplitter4WayBuilding() {
+  let building = BlueprintUtils.CreateEmptyBuilding();
+  building.itemId = 2020;
+  building.modelIndex = getModelIndexByItemId(2020);
+  building.areaIndex = 0;
+  building.recipeId = 0;
+  building.filterId = 0;
+  building.outputObjIdx = -1;
+  building.inputObjIdx = -1;
+  building.inputToSlot = 14;
+  building.outputToSlot = 14;
+  building.inputFromSlot = 15;
+  building.outputFromSlot = 15;
+  building.yaw = [0, 0];
+  building.parameters = { _defaultParamsBase64: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' };
   return building;
 }
 
@@ -527,8 +547,24 @@ function linkBelt(source, target) {
   if (!source || !target) {
     return;
   }
-  source.outputToSlot = 1;
-  source.__outputTargetRef = target;
+  // 如果目标是分流器
+  if (target.itemId === 2020) {
+    source.outputToSlot = 1;
+    source.__outputTargetRef = target;
+    target.inputFromSlot = 1; // 传送带有方向，接入分流器 Slot 1
+  } 
+  // 如果源是分流器
+  else if (source.itemId === 2020) {
+    source.outputToSlot = 1; // 从分流器 Slot 1 输出
+    target.inputFromSlot = 1;
+    target.__inputSourceRef = source;
+  }
+  // 普通传送带连接
+  else {
+    source.outputToSlot = 1;
+    source.__outputTargetRef = target;
+    target.inputFromSlot = 1; // 增加：普通传送带也明确设置输入槽位
+  }
 }
 
 function linkBeltLine(belts) {
@@ -703,10 +739,22 @@ function buildMode2FlyInputOrder(inputItemIds) {
   return ordered;
 }
 
-function createMode2FlyBlock(itemId, beltLevel, inserterLevel, isInput, linkedBelt, offsetX, offsetY) {
+function createMode2FlyBlock(itemId, beltLevel, inserterLevel, isInput, linkedBelt, offsetX, offsetY, options = {}) {
   let normalizedItemId = toInt(itemId, 0);
   if (!linkedBelt || normalizedItemId <= 0) {
     return [];
+  }
+
+  let useSplitter4Way = !!options.enableSplitter4Way;
+  let flyBaseZ = useSplitter4Way ? 2 : 0;
+
+  let splitter = null;
+  if (useSplitter4Way) {
+    splitter = createSplitter4WayBuilding();
+    BlueprintUtils.setBuildPos(splitter, toNumber(offsetX, 0), toNumber(offsetY, 0), 0);
+    // 使分流器朝向与传送带流向一致
+    let splitterYaw = isInput ? 180 : 0;
+    splitter.yaw = [splitterYaw, splitterYaw];
   }
 
   let box = createStorageBoxBuilding();
@@ -714,12 +762,20 @@ function createMode2FlyBlock(itemId, beltLevel, inserterLevel, isInput, linkedBe
   if (MODE2_FLY_BLOCK_ZERO_BAN_ITEM_IDS.has(normalizedItemId)) {
     box.parameters.bans = 0;
   }
-  BlueprintUtils.setBuildPos(box, toNumber(offsetX, 0), toNumber(offsetY, 0), 0);
+  BlueprintUtils.setBuildPos(box, toNumber(offsetX, 0), toNumber(offsetY, 0), flyBaseZ);
+  // 建立箱子和分流器的连接
+  if (useSplitter4Way) {
+    box.__inputSourceRef = splitter;
+    // 箱子位于 Z=2，连接到分流器的垂直端口需要特定的槽位设置
+    box.inputFromSlot = 1; 
+    splitter.outputToSlot = 1;
+    splitter.__outputTargetRef = box;
+  }
 
   let delivery = createDeliveryBuilding();
   delivery.filterId = normalizedItemId;
   delivery.parameters.courierAutoReplenish = true;
-  BlueprintUtils.setBuildPos(delivery, toNumber(offsetX, 0), toNumber(offsetY, 0), 1.875);
+  BlueprintUtils.setBuildPos(delivery, toNumber(offsetX, 0), toNumber(offsetY, 0), flyBaseZ + 1.875);
   delivery.__inputSourceRef = box;
 
   let linkPos = BlueprintUtils.getBuildPos(linkedBelt);
@@ -748,15 +804,33 @@ function createMode2FlyBlock(itemId, beltLevel, inserterLevel, isInput, linkedBe
   linkBeltLine(belts);
   if (isInput) {
     reverseBeltLine(belts);
-    if (belts[0]) {
+    if (belts.length > 0) {
       linkBelt(belts[0], linkedBelt);
+      if (useSplitter4Way) {
+        // 供料模式：物品从分流器流向传送带
+        linkBelt(splitter, belts[belts.length - 1]);
+      }
+    } else {
+      if (useSplitter4Way) {
+        linkBelt(splitter, linkedBelt);
+      }
     }
-  } else if (belts[0]) {
-    linkBelt(linkedBelt, belts[0]);
+  } else {
+    if (belts.length > 0) {
+      linkBelt(linkedBelt, belts[0]);
+      if (useSplitter4Way) {
+        // 产出模式：物品从传送带流入分流器
+        linkBelt(belts[belts.length - 1], splitter);
+      }
+    } else {
+      if (useSplitter4Way) {
+        linkBelt(linkedBelt, splitter);
+      }
+    }
   }
 
   let inserter = null;
-  if (belts.length > 0) {
+  if (belts.length > 0 && !useSplitter4Way) {
     inserter = createInserterBuilding(inserterLevel);
     let endBelt = belts[belts.length - 1];
     let endPos = BlueprintUtils.getBuildPos(endBelt);
@@ -796,16 +870,25 @@ function createMode2FlyBlock(itemId, beltLevel, inserterLevel, isInput, linkedBe
         inserter.localOffset[1].y = toNumber(boxPos.y, 0) + 1 - 0.2;
       }
     }
+  } else if (useSplitter4Way) {
+    if (isInput) {
+      delivery.parameters.storageMode = 2;
+    } else {
+      delivery.parameters.storageMode = 1;
+    }
   }
 
   let buildings = [box, delivery].concat(belts);
+  if (splitter) {
+    buildings.unshift(splitter);
+  }
   if (inserter) {
     buildings.push(inserter);
   }
   return buildings;
 }
 
-function appendMode2FlyBlocks(rowInfo, inputLines, outputLine, beltLevel, inserterLevel) {
+function appendMode2FlyBlocks(rowInfo, inputLines, outputLine, beltLevel, inserterLevel, options = {}) {
   if (!Array.isArray(inputLines) || inputLines.length === 0) {
     return [];
   }
@@ -858,6 +941,7 @@ function appendMode2FlyBlocks(rowInfo, inputLines, outputLine, beltLevel, insert
       linkBelt,
       baseX + 3 * i,
       baseY,
+      options,
     );
     flyBuildings.push(...blockBuildings);
     outputColumnIndex += 1;
@@ -874,6 +958,7 @@ function appendMode2FlyBlocks(rowInfo, inputLines, outputLine, beltLevel, insert
       outputLinkBelt,
       baseX + 1 + 3 * outputColumnIndex,
       baseY,
+      options,
     );
     flyBuildings.push(...outputBlockBuildings);
   }
@@ -890,6 +975,7 @@ function createLegacyMachineSegment(rowInfo, options) {
     includeTransport,
     enableBackflow,
     enableFlyBlocks,
+    enableSplitter4Way,
   } = options;
 
   let conf = getMachineLayoutConfig(rowInfo.machineType);
@@ -941,6 +1027,9 @@ function createLegacyMachineSegment(rowInfo, options) {
   for (let machineIndex = 0; machineIndex < machines.length; machineIndex++) {
     let machine = machines[machineIndex];
     let beltXBase = machineIndex * conf.space + conf.startBeltOffset;
+    let machinePos = BlueprintUtils.getBuildPos(machine);
+    let outsideScale = 1 - toNumber(conf.outsideMidOffset, 0.2);
+    let bottomLack = toNumber(conf.bottomLack, 0.2);
 
     for (let i = 0; i < bottomInputCount; i++) {
       let line = inputLines[bottomInputCount - 1 - i];
@@ -949,14 +1038,30 @@ function createLegacyMachineSegment(rowInfo, options) {
         continue;
       }
 
+      let length = i + 1;
       let inserter = createInserterBuilding(inserterLevel);
-      linkByInserter(sourceBelt, machine, inserter, {
-        toMachine: true,
-        targetSlot: slotMap[i] ?? 0,
-        sourceSlot: -1,
-        yawOverride: 0,
-        lengthOverride: i + 1,
-      });
+      inserter.__inputSourceRef = sourceBelt;
+      inserter.__outputTargetRef = machine;
+      inserter.outputToSlot = slotMap[i] ?? 0;
+      inserter.inputFromSlot = -1;
+      inserter.yaw = [0, 0];
+      inserter.parameters = { length };
+
+      let x =
+        toNumber(machinePos.x, 0) -
+        toNumber(conf.leftMidDistance, 1) +
+        i * outsideScale +
+        toNumber(conf.outsideMidOffset, 0.2);
+      inserter.localOffset[0] = {
+        x,
+        y: toNumber(machinePos.y, 0) - toNumber(conf.bottomMidDistance, 1) - length,
+        z: toNumber(machinePos.z, 0),
+      };
+      inserter.localOffset[1] = {
+        x,
+        y: toNumber(machinePos.y, 0) - toNumber(conf.bottomMidDistance, 1) + bottomLack,
+        z: toNumber(machinePos.z, 0),
+      };
       inserters.push(inserter);
     }
 
@@ -967,14 +1072,30 @@ function createLegacyMachineSegment(rowInfo, options) {
         continue;
       }
 
+      let length = i + 1;
       let inserter = createInserterBuilding(inserterLevel);
-      linkByInserter(sourceBelt, machine, inserter, {
-        toMachine: true,
-        targetSlot: slotMap[3 + i] ?? 0,
-        sourceSlot: -1,
-        yawOverride: 180,
-        lengthOverride: i + 1,
-      });
+      inserter.__inputSourceRef = sourceBelt;
+      inserter.__outputTargetRef = machine;
+      inserter.outputToSlot = slotMap[3 + i] ?? 0;
+      inserter.inputFromSlot = -1;
+      inserter.yaw = [180, 180];
+      inserter.parameters = { length };
+
+      let x =
+        toNumber(machinePos.x, 0) -
+        toNumber(conf.leftMidDistance, 1) +
+        i * outsideScale +
+        toNumber(conf.outsideMidOffset, 0.2);
+      inserter.localOffset[0] = {
+        x,
+        y: toNumber(machinePos.y, 0) + toNumber(conf.topMidDistance, 1) + length,
+        z: toNumber(machinePos.z, 0),
+      };
+      inserter.localOffset[1] = {
+        x,
+        y: toNumber(machinePos.y, 0) + toNumber(conf.topMidDistance, 1) - bottomLack,
+        z: toNumber(machinePos.z, 0),
+      };
       inserters.push(inserter);
     }
 
@@ -986,13 +1107,30 @@ function createLegacyMachineSegment(rowInfo, options) {
       }
 
       let sourceSlot = slotMap[3 + extraInputCount + i] ?? slotMap[slotMap.length - 1] ?? 0;
+      let length = i + 1 + extraInputCount;
       let inserter = createInserterBuilding(inserterLevel);
-      linkByInserter(machine, targetBelt, inserter, {
-        toMachine: false,
-        sourceSlot,
-        yawOverride: 0,
-        lengthOverride: i + 1 + extraInputCount,
-      });
+      inserter.__inputSourceRef = machine;
+      inserter.__outputTargetRef = targetBelt;
+      inserter.outputToSlot = -1;
+      inserter.inputFromSlot = sourceSlot;
+      inserter.yaw = [0, 0];
+      inserter.parameters = { length };
+
+      let x =
+        toNumber(machinePos.x, 0) -
+        toNumber(conf.leftMidDistance, 1) +
+        (i + extraInputCount) * outsideScale +
+        toNumber(conf.outsideMidOffset, 0.2);
+      inserter.localOffset[0] = {
+        x,
+        y: toNumber(machinePos.y, 0) + toNumber(conf.topMidDistance, 1) - bottomLack,
+        z: toNumber(machinePos.z, 0),
+      };
+      inserter.localOffset[1] = {
+        x,
+        y: toNumber(machinePos.y, 0) + toNumber(conf.topMidDistance, 1) + length,
+        z: toNumber(machinePos.z, 0),
+      };
       inserters.push(inserter);
     }
   }
@@ -1020,7 +1158,9 @@ function createLegacyMachineSegment(rowInfo, options) {
   }
 
   if (enableFlyBlocks) {
-    flyBlocks = appendMode2FlyBlocks(rowInfo, inputLines, outputLine, beltLevel, inserterLevel);
+    flyBlocks = appendMode2FlyBlocks(rowInfo, inputLines, outputLine, beltLevel, inserterLevel, {
+      enableSplitter4Way,
+    });
   }
 
   return {
@@ -1069,6 +1209,7 @@ function createMachineSegments(rowInfo, config, options = {}) {
     : !!options.includeTransport;
   let enableBackflow = !!options.enableBackflow;
   let enableFlyBlocks = !!options.enableFlyBlocks;
+  let enableSplitter4Way = !!options.enableSplitter4Way;
   let beltLevel = toInt(config?.beltLv, 1);
   let inserterLevel = toInt(config?.inserterLv, 1);
   let layoutConf = getMachineLayoutConfig(rowInfo.machineType);
@@ -1098,17 +1239,22 @@ function createMachineSegments(rowInfo, config, options = {}) {
       includeTransport,
       enableBackflow,
       enableFlyBlocks,
+      enableSplitter4Way,
     });
 
-    segment.buildings = segment.machines.concat(segment.belts, segment.inserters, segment.flyBlocks || []);
-    segments.push(segment);
-  }
-
-  if (includeTransport && toInt(config?.modeType, 2) === 1 && segments.length > 1) {
-    let segmentConnectors = connectNeighborSegments(segments, config);
-    if (segmentConnectors.length > 0) {
-      segments[segments.length - 1].buildings.push(...segmentConnectors);
+    let orderedBuildings = [];
+    for (let inputIndex = 0; inputIndex < segment.inputLines.length; inputIndex++) {
+      let lineBelts = segment.inputLines[inputIndex]?.belts || [];
+      orderedBuildings.push(...lineBelts);
     }
+    orderedBuildings.push(...(segment.outputLine?.belts || []));
+    orderedBuildings.push(...segment.machines);
+    orderedBuildings.push(...segment.inserters);
+    orderedBuildings.push(...(segment.backflowLine?.belts || []));
+    orderedBuildings.push(...(segment.flyBlocks || []));
+
+    segment.buildings = orderedBuildings;
+    segments.push(segment);
   }
 
   return {
@@ -1134,6 +1280,7 @@ function createMachineBlock(rowInfo, config) {
     includeTransport: true,
     enableBackflow: false,
     enableFlyBlocks: modeType === 2,
+    enableSplitter4Way: isFourWaySplitterEnabled(config),
   });
   return createMachineBlockFromSegments(segments);
 }
@@ -1144,6 +1291,7 @@ function createMachineBlockWithOptions(rowInfo, config, options = {}) {
     includeTransport: true,
     enableBackflow: !!options.enableBackflow,
     enableFlyBlocks: options.enableFlyBlocks == null ? modeType === 2 : !!options.enableFlyBlocks,
+    enableSplitter4Way: isFourWaySplitterEnabled(config),
   });
 
   return {
@@ -1707,217 +1855,6 @@ function createBeltInserter(source, target, inserterLevel, filterId = 0) {
   return inserter;
 }
 
-function createOrthogonalBeltPath(startX, startY, endX, endY) {
-  let sx = toNumber(startX, 0);
-  let sy = toNumber(startY, 0);
-  let ex = toNumber(endX, 0);
-  let ey = toNumber(endY, 0);
-
-  if (Math.abs(sx - ex) < 0.000001 && Math.abs(sy - ey) < 0.000001) {
-    return [{ x: sx, y: sy, z: 0 }];
-  }
-
-  if (Math.abs(sx - ex) < 0.000001 || Math.abs(sy - ey) < 0.000001) {
-    return createPathByPoints([
-      { x: sx, y: sy, z: 0 },
-      { x: ex, y: ey, z: 0 },
-    ]);
-  }
-
-  let cornerA = { x: ex, y: sy, z: 0 };
-  return createPathByPoints([
-    { x: sx, y: sy, z: 0 },
-    cornerA,
-    { x: ex, y: ey, z: 0 },
-  ]);
-}
-
-function buildDetourPathForSplitter(sourcePos, targetPos) {
-  let sx = toNumber(sourcePos?.x, 0);
-  let sy = toNumber(sourcePos?.y, 0);
-  let ex = toNumber(targetPos?.x, 0);
-  let ey = toNumber(targetPos?.y, 0);
-  let dx = ex - sx;
-  let dy = ey - sy;
-
-  if (Math.abs(dx) < 0.000001 && Math.abs(dy) < 0.000001) {
-    return [{ x: sx, y: sy, z: 0 }];
-  }
-
-  if (Math.abs(dx) >= Math.abs(dy)) {
-    let detourY = sy + (dy >= 0 ? 1 : -1);
-    return createPathByPoints([
-      { x: sx, y: sy, z: 0 },
-      { x: sx, y: detourY, z: 0 },
-      { x: ex, y: detourY, z: 0 },
-      { x: ex, y: ey, z: 0 },
-    ]);
-  }
-
-  let detourX = sx + (dx >= 0 ? 1 : -1);
-  return createPathByPoints([
-    { x: sx, y: sy, z: 0 },
-    { x: detourX, y: sy, z: 0 },
-    { x: detourX, y: ey, z: 0 },
-    { x: ex, y: ey, z: 0 },
-  ]);
-}
-
-function createDirectBeltBridge(source, target, beltLevel) {
-  if (!source || !target) {
-    return [];
-  }
-
-  let sourcePos = BlueprintUtils.getBuildPos(source);
-  let targetPos = BlueprintUtils.getBuildPos(target);
-  let path = createOrthogonalBeltPath(sourcePos.x, sourcePos.y, targetPos.x, targetPos.y);
-  if (!Array.isArray(path) || path.length < 2) {
-    return [];
-  }
-
-  let belts = [];
-  for (let i = 1; i < path.length - 1; i++) {
-    let p = path[i];
-    belts.push(createBeltBuilding(beltLevel, toNumber(p.x, 0), toNumber(p.y, 0), 0));
-  }
-
-  let cursor = source;
-  for (let i = 0; i < belts.length; i++) {
-    linkBelt(cursor, belts[i]);
-    cursor = belts[i];
-  }
-  linkBelt(cursor, target);
-
-  return belts;
-}
-
-function createBeltSplitterBridge(source, target, beltLevel, filterId = 0) {
-  if (!source || !target) {
-    return [];
-  }
-
-  let sourcePos = BlueprintUtils.getBuildPos(source);
-  let targetPos = BlueprintUtils.getBuildPos(target);
-  let path = createOrthogonalBeltPath(sourcePos.x, sourcePos.y, targetPos.x, targetPos.y);
-  if (!Array.isArray(path) || path.length < 3) {
-    path = buildDetourPathForSplitter(sourcePos, targetPos);
-  }
-  if (!Array.isArray(path) || path.length < 3) {
-    return [];
-  }
-
-  let splitterIdx = Math.max(1, Math.min(path.length - 2, Math.floor(path.length / 2)));
-  let splitterPoint = path[splitterIdx];
-
-  let leadBelts = [];
-  for (let i = 1; i < splitterIdx; i++) {
-    let p = path[i];
-    leadBelts.push(createBeltBuilding(beltLevel, toNumber(p.x, 0), toNumber(p.y, 0), 0));
-  }
-
-  let tailBelts = [];
-  for (let i = splitterIdx + 1; i < path.length - 1; i++) {
-    let p = path[i];
-    tailBelts.push(createBeltBuilding(beltLevel, toNumber(p.x, 0), toNumber(p.y, 0), 0));
-  }
-
-  let splitter = createSplitterBuilding();
-  BlueprintUtils.setBuildPos(splitter, toNumber(splitterPoint.x, 0), toNumber(splitterPoint.y, 0), 0);
-  splitter.yaw = [calcYaw(sourcePos.x, sourcePos.y, targetPos.x, targetPos.y), calcYaw(sourcePos.x, sourcePos.y, targetPos.x, targetPos.y)];
-  if (toInt(filterId, 0) > 0) {
-    splitter.filterId = toInt(filterId, 0);
-  }
-
-  let upstream = source;
-  for (let i = 0; i < leadBelts.length; i++) {
-    linkBelt(upstream, leadBelts[i]);
-    upstream = leadBelts[i];
-  }
-
-  linkBelt(upstream, splitter);
-  splitter.__inputSourceRef = upstream;
-
-  let downstream = tailBelts.length > 0 ? tailBelts[0] : target;
-  splitter.outputToSlot = 1;
-  splitter.__outputTargetRef = downstream;
-
-  if (tailBelts.length > 0) {
-    for (let i = 0; i < tailBelts.length - 1; i++) {
-      linkBelt(tailBelts[i], tailBelts[i + 1]);
-    }
-    linkBelt(tailBelts[tailBelts.length - 1], target);
-  }
-
-  let box = createStorageBoxBuilding();
-  BlueprintUtils.setBuildPos(box, toNumber(splitterPoint.x, 0), toNumber(splitterPoint.y, 0), 1.2);
-
-  return leadBelts.concat([splitter], tailBelts, [box]);
-}
-
-function createBeltBridgeConnector(source, target, config, inserterLevel, filterId = 0) {
-  if (toInt(config?.useFourWaySplitter, 0) > 0) {
-    let bridgeBuildings = createBeltSplitterBridge(source, target, toInt(config?.beltLv, 1), filterId);
-    if (bridgeBuildings.length > 0) {
-      return bridgeBuildings;
-    }
-  }
-
-  return [createBeltInserter(source, target, inserterLevel, filterId)];
-}
-
-function createSegmentBeltConnector(source, target, config) {
-  if (!source || !target) {
-    return [];
-  }
-
-  if (toInt(config?.useFourWaySplitter, 0) > 0) {
-    let bridgeBuildings = createBeltSplitterBridge(source, target, toInt(config?.beltLv, 1));
-    if (bridgeBuildings.length > 0) {
-      return bridgeBuildings;
-    }
-  }
-
-  return createDirectBeltBridge(source, target, toInt(config?.beltLv, 1));
-}
-
-function connectNeighborSegments(segments, config) {
-  if (!Array.isArray(segments) || segments.length <= 1) {
-    return [];
-  }
-
-  let connectors = [];
-  for (let i = 0; i < segments.length - 1; i++) {
-    let current = segments[i];
-    let next = segments[i + 1];
-
-    let currentInputLines = Array.isArray(current?.inputLines) ? current.inputLines : [];
-    let nextInputLines = Array.isArray(next?.inputLines) ? next.inputLines : [];
-    let inputLineCount = Math.min(currentInputLines.length, nextInputLines.length);
-
-    for (let lineIndex = 0; lineIndex < inputLineCount; lineIndex++) {
-      let currentInputBelts = currentInputLines[lineIndex]?.belts || [];
-      let nextInputBelts = nextInputLines[lineIndex]?.belts || [];
-      let source = currentInputBelts[currentInputBelts.length - 1];
-      let target = nextInputBelts[0];
-      connectors.push(...createSegmentBeltConnector(source, target, config));
-    }
-
-    let currentOutputBelts = current?.outputLine?.belts || [];
-    let nextOutputBelts = next?.outputLine?.belts || [];
-    let outputSource = currentOutputBelts[currentOutputBelts.length - 1];
-    let outputTarget = nextOutputBelts[0];
-    connectors.push(...createSegmentBeltConnector(outputSource, outputTarget, config));
-
-    let currentBackflowBelts = current?.backflowLine?.belts || [];
-    let nextBackflowBelts = next?.backflowLine?.belts || [];
-    let backflowSource = currentBackflowBelts[currentBackflowBelts.length - 1];
-    let backflowTarget = nextBackflowBelts[0];
-    connectors.push(...createSegmentBeltConnector(backflowSource, backflowTarget, config));
-  }
-
-  return connectors;
-}
-
 function isNeedItem(needsById, itemId) {
   let id = toInt(itemId, 0);
   return id > 0 && toNumber(needsById?.[id], 0) > 0;
@@ -1979,7 +1916,7 @@ function calcMode2LimiterInserterPlan(needPow, maxInserterLv) {
   return result;
 }
 
-function createMode2LimiterBlock(needPow, maxInserterLv, beltLevel, filterId = 0, config = {}) {
+function createMode2LimiterBlock(needPow, maxInserterLv, beltLevel, filterId = 0) {
   let plan = calcMode2LimiterInserterPlan(needPow, maxInserterLv);
 
   let belts1 = [];
@@ -2045,15 +1982,13 @@ function createMode2LimiterBlock(needPow, maxInserterLv, beltLevel, filterId = 0
       continue;
     }
 
-    inserters.push(
-      ...createBeltBridgeConnector(
-        source,
-        target,
-        config,
-        Math.min(toInt(plan[i].lv, maxInserterLv), toInt(maxInserterLv, 1)),
-        filterId,
-      ),
+    let inserter = createBeltInserter(
+      source,
+      target,
+      Math.min(toInt(plan[i].lv, maxInserterLv), toInt(maxInserterLv, 1)),
+      filterId,
     );
+    inserters.push(inserter);
   }
 
   return {
@@ -2451,7 +2386,7 @@ function buildMode2MainBus(segmentMetas, baseBuildings, config, needsById = {}, 
         continue;
       }
 
-      connectors.push(...createBeltBridgeConnector(sourceBelt, inputHead.head, config, inserterLevel, itemId));
+      connectors.push(createBeltInserter(sourceBelt, inputHead.head, inserterLevel, itemId));
     }
 
     let backflowHead = meta.backflowHead;
@@ -2473,7 +2408,7 @@ function buildMode2MainBus(segmentMetas, baseBuildings, config, needsById = {}, 
       linkBelt(backflowHead, targetBelt);
       backflowHead.outputToSlot = 2;
     } else {
-      connectors.push(...createBeltBridgeConnector(backflowHead, targetBelt, config, inserterLevel, mainItemId));
+      connectors.push(createBeltInserter(backflowHead, targetBelt, inserterLevel, mainItemId));
     }
 
     let outputTail = meta.outputTail;
@@ -2483,7 +2418,7 @@ function buildMode2MainBus(segmentMetas, baseBuildings, config, needsById = {}, 
     }
 
     let limitNeed = Math.max(0.5, toNumber(meta.outputPerSecond, 0));
-    let limiterBlock = createMode2LimiterBlock(limitNeed, inserterLevel, beltLevel, mainItemId, config);
+    let limiterBlock = createMode2LimiterBlock(limitNeed, inserterLevel, beltLevel, mainItemId);
     if (!limiterBlock.inputBelt || !limiterBlock.outputBelt) {
       continue;
     }
@@ -2557,7 +2492,7 @@ function buildMode2MainBus(segmentMetas, baseBuildings, config, needsById = {}, 
       }
 
       let lv = toInt(rawOreBlock.inputTransPlan?.[j]?.lv, inserterLevel);
-      rawOreBlock.buildings.push(...createBeltBridgeConnector(sourceBelt, busTarget, config, lv));
+      rawOreBlock.buildings.push(createBeltInserter(sourceBelt, busTarget, lv));
       hasConnector = true;
     }
 
@@ -2574,12 +2509,12 @@ function buildMode2MainBus(segmentMetas, baseBuildings, config, needsById = {}, 
       }
 
       let lv = toInt(rawOreBlock.outputTransPlan?.[j]?.lv, inserterLevel);
-      rawOreBlock.buildings.push(...createBeltBridgeConnector(busSource, targetBeltInBlock, config, lv, itemId));
+      rawOreBlock.buildings.push(createBeltInserter(busSource, targetBeltInBlock, lv, itemId));
       hasConnector = true;
     }
 
     if (!hasConnector) {
-      rawOreBlock.buildings.push(...createBeltBridgeConnector(rawOreBlock.outputBelt, targetBelt, config, inserterLevel, itemId));
+      rawOreBlock.buildings.push(createBeltInserter(rawOreBlock.outputBelt, targetBelt, inserterLevel, itemId));
     }
 
     rawOreBuildings.push(...rawOreBlock.buildings);
@@ -2626,44 +2561,57 @@ function createPowerTowerGrid(existingBuildings) {
   let width = Math.max(1, maxX - minX);
   let height = Math.max(1, maxY - minY);
 
+  // 1. 建立占用网格，避免与现有建筑重叠
   let occupied = new Set();
-  for (let i = 0; i < existingBuildings.length; i++) {
-    let b = existingBuildings[i];
+  for (let b of existingBuildings) {
     let pos = BlueprintUtils.getBuildPos(b);
-    let id = toInt(b?.itemId, 0);
-
+    let id = toInt(b.itemId, 0);
+    // 估计常用建筑的长宽
     let bSize = 1;
-    if ([2303, 2304, 2305, 2302, 2315, 2308, 2309, 2310, 2314, 2311].includes(id)) {
-      bSize = 3;
-    } else if (id === 2313) {
-      bSize = 6;
-    } else if (id === 2306) {
-      bSize = 4;
-    } else if (id === 2103 || id === 2104) {
-      bSize = 7;
-    } else if (id === 2101) {
-      bSize = 2;
-    } else if (id === 2102) {
-      bSize = 3;
-    } else if (id === 2020) {
-      bSize = 3;
-    } else if (id === 2107) {
-      bSize = 1;
-    }
-
+    if ([2303, 2304, 2305, 2302, 2315, 2308, 2309, 2310, 2314, 2311].includes(id)) bSize = 3; // 组装机、熔炉、研究站等
+    else if (id === 2313) bSize = 6; // 原油精炼厂
+    else if (id === 2306) bSize = 4; // 化工厂
+    else if (id === 2103 || id === 2104) bSize = 7; // 采矿机
+    else if (id === 2101) bSize = 2; // 小型仓储
+    else if (id === 2102) bSize = 3; // 大型仓储
+    else if (id === 2106) bSize = 3; // 四向分流器
+    else if (id === 2107) bSize = 1; // 配送器
+    
     let radius = (bSize - 1) / 2;
     for (let dx = -Math.floor(radius); dx <= Math.ceil(radius); dx++) {
       for (let dy = -Math.floor(radius); dy <= Math.ceil(radius); dy++) {
-        occupied.add(`${Math.round(toNumber(pos?.x, 0) + dx)}_${Math.round(toNumber(pos?.y, 0) + dy)}`);
+        occupied.add(`${Math.round(pos.x + dx)}_${Math.round(pos.y + dy)}`);
       }
     }
   }
 
-  let powerConsumers = existingBuildings.filter((b) => {
-    let id = toInt(b?.itemId, 0);
-    return id !== 2001 && id !== 2002 && id !== 2003;
-  }).length;
-  let totalTowers = Math.max(1, Math.ceil(powerConsumers / 20), Math.ceil(existingBuildings.length / 40));
+  // 2. 优化电塔密度：仅根据有用电需求的建筑数量计算
+  let powerConsumers = existingBuildings.filter(b => {
+    let id = toInt(b.itemId, 0);
+    // 排除传送带、箱子（除非带配送器）、地基、分拣器本身（分拣器虽然耗电但通常依附于机器）
+    // 主要关注组装机、熔炉、车站、化工厂、抽水机等大功耗建筑
+    const isBelt = [2001, 2002, 2003].includes(id);
+    const isInserter = [2011, 2012, 2013].includes(id);
+    const isStaticContainer = id === 2101 || id === 2102; // 普通箱子没配送器不耗电
+    
+    // 如果是箱子，检查是否有配送器 (itemId 2107)
+    let hasDelivery = false;
+    if (isStaticContainer) {
+      hasDelivery = existingBuildings.some(other => 
+        toInt(other.itemId, 0) === 2107 && 
+        Math.abs(toNumber(other.localOffset?.[0]?.x, 0) - toNumber(b.localOffset?.[0]?.x, 0)) < 0.1 &&
+        Math.abs(toNumber(other.localOffset?.[0]?.y, 0) - toNumber(b.localOffset?.[0]?.y, 0)) < 0.1
+      );
+    }
+
+    return !isBelt && !isInserter && (!isStaticContainer || hasDelivery);
+  });
+
+  // 记录有用电建筑的重心或聚集区，用于后面的过滤
+  let consumerPoints = powerConsumers.map(b => BlueprintUtils.getBuildPos(b));
+  
+  // 30 个真正用电的建筑给 1 个电塔（分拣器会在机器供电范围内自动取电）
+  let totalTowers = Math.max(1, Math.ceil(powerConsumers.length / 10)); // 适当提高一点，因为供电半径有限
 
   let topY = minY + 2;
   let bottomY = maxY + 1;
@@ -2680,22 +2628,29 @@ function createPowerTowerGrid(existingBuildings) {
   let used = {};
 
   function tryPlaceTower(x, y) {
-    for (let r = 0; r <= 4; r++) {
+    // 检查该位置是否靠近任何用电建筑（供电半径约 10 格）
+    let nearConsumer = consumerPoints.some(p => {
+      let dx = p.x - x;
+      let dy = p.y - y;
+      return (dx * dx + dy * dy) <= 121; // 11^2，略大于 10x10 半径
+    });
+
+    if (!nearConsumer && powerConsumers.length > 0) return false;
+
+    // 尝试在目标点附近寻找非占用位置
+    for (let r = 0; r <= 4; r++) { // 范围 0 到 4
       for (let dx = -r; dx <= r; dx++) {
         for (let dy = -r; dy <= r; dy++) {
-          if (r > 0 && Math.abs(dx) !== r && Math.abs(dy) !== r) {
-            continue;
-          }
-
-          let cx = Math.round(toNumber(x, 0) + dx);
-          let cy = Math.round(toNumber(y, 0) + dy);
+          if (r > 0 && Math.abs(dx) !== r && Math.abs(dy) !== r) continue; // 只检查边缘
+          let cx = Math.round(x + dx);
+          let cy = Math.round(y + dy);
           let key = `${cx}_${cy}`;
           if (!occupied.has(key) && !used[key]) {
             let tower = createPowerTowerBuilding();
             BlueprintUtils.setBuildPos(tower, cx, cy, 0);
             towers.push(tower);
             used[key] = 1;
-            occupied.add(key);
+            occupied.add(key); // 电塔本身也占用一个格子
             return true;
           }
         }
@@ -2828,9 +2783,13 @@ function buildMainLineBlueprint(rows, config, options = {}) {
   let mode2RawOreRowCount = 0;
   let mode2SegmentMetas = [];
   let mode2ItemSchedule = [];
+  let rowOrder = validRows;
+  if (modeType === 2) {
+    rowOrder = validRows.slice().reverse();
+  }
 
-  for (let i = 0; i < validRows.length; i++) {
-    let row = validRows[i];
+  for (let i = 0; i < rowOrder.length; i++) {
+    let row = rowOrder[i];
     let mainItemId = toInt(row?.mainItemId, 0);
     let isNeedItem = mainItemId > 0 && toNumber(needsById[mainItemId], 0) > 0;
     let rowBlockResult = createBlocksForRow(row, config, {
@@ -2872,7 +2831,8 @@ function buildMainLineBlueprint(rows, config, options = {}) {
     }
   }
 
-  if (toInt(config?.enablePowerTower, 1) > 0 && (modeType === 1 || modeType === 2 || modeType === 3) && buildings.length > 0) {
+  let enablePowerTowers = isPowerTowerEnabled(config);
+  if (enablePowerTowers && (modeType === 1 || modeType === 2 || modeType === 3) && buildings.length > 0) {
     let powerTowers = createPowerTowerGrid(buildings);
     if (powerTowers.length > 0) {
       let preTowerCount = Math.min(2, powerTowers.length);

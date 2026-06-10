@@ -1,5 +1,40 @@
 # HISTORY_FRONTEND
 
+### [2026-06-09 22:40] GitHub Copilot / GPT-5.3-Codex
+
+- **修改范围**：将主线蓝图生成核心逻辑回对齐参考项目，修复“60铁矿四项分流器”生成不一致
+- **修改的文件**：
+  - `src/utils/blueprintGen/blueprintGenerator.js`
+  - `HISTORY_FRONTEND.md`
+- **变更意图**：按参考仓库 `DSP_Blueprint_Generator/src/core/blueprintGenerator.js` 对齐生成算法，恢复分流器与 mode2 主干连接的参考行为
+- **核心变更内容**：
+  - 步骤1：以参考实现重置 `blueprintGenerator`，恢复 `enableSplitter4Way` 相关的飞线块与桥接逻辑、mode2 行序与连接策略
+  - 步骤2：适配当前仓库依赖接口：编码输出改为 `PARSER.toStr`，`BlueprintUtils` 导入路径改为当前目录结构
+  - 步骤3：增加配置兼容读取：四向分流器开关兼容 `useFourWaySplitter/enableSplitter4Way`，电线杆开关兼容 `enablePowerTower/enablePowerTowers`
+- **影响范围**：
+  - 影响所有 `buildMainLineBlueprint` 与 `buildSingleRowBlueprint` 生成结果
+  - 重点影响 `modeType = 2` 且启用四向分流器时的连接拓扑和蓝图字符串结果
+- **注意事项**：
+  - 本次无后端接口、数据库结构变更
+
+### [2026-06-09 21:20] GitHub Copilot / GPT-5.3-Codex
+
+- **修改范围**：进一步修复分拣器角度偏差，并优化电线杆密度与重叠问题
+- **修改的文件**：
+  - `src/utils/blueprintGen/blueprintGenerator.js`
+  - `HISTORY_FRONTEND.md`
+- **变更意图**：按参考仓库 `DSP_Blueprint_Generator/src/core/blueprintGenerator.js` 对齐核心算法，解决角度偏差仍然存在与电线杆过密重叠的问题
+- **核心变更内容**：
+  - 步骤1：将 `linkByInserter` 的自动朝向计算回退为参考实现（直接使用 `calcYaw`），移除额外的主轴对齐逻辑，避免带间分拣器角度失真
+  - 步骤2：重写 `createPowerTowerGrid`：新增建筑占位网格与近邻搜索放置（半径 0~4），优先寻找不重叠位置后再放置电线杆
+  - 步骤3：电线杆数量改为按“非传送带建筑密度 + 总建筑数量”联合估算，降低默认密度（`powerConsumers/20` 与 `total/40`）
+  - 步骤4：对四向分流器（`itemId=2020`）等建筑加入占位尺寸估算，减少与主建筑重叠概率
+- **影响范围**：
+  - 影响所有由 `linkByInserter` 自动推导朝向的分拣器
+  - 影响启用“生成电线杆”时的数量与落点分布
+- **注意事项**：
+  - 本次无后端接口、数据库结构变更
+
 ### [2026-06-09 21:05] GitHub Copilot / GPT-5.3-Codex
 
 - **修改范围**：修复蓝图生成中的分拣器角度、四向分流器生效及无方案跨段传送带连通
